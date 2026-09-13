@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
+  Copy,
   ClipboardList,
   LayoutDashboard,
   MapPinned,
@@ -667,6 +668,28 @@ function Dashboard() {
     if (!error) await loadSharedData();
   };
   const uploadPhoto=async(product:Product,file:File)=>{setSyncStatus('Mengunggah foto…');const ext=file.name.split('.').pop()?.toLowerCase()||'jpg';const path=`${product.trip_code}/${product.id}-${Date.now()}.${ext}`;const{error}=await supabase.storage.from('product-images').upload(path,file,{upsert:false});if(error){setSyncStatus('Gagal mengunggah foto');return}const{data}=supabase.storage.from('product-images').getPublicUrl(path);await saveProduct(product.id,'photo_url',data.publicUrl);setCatalogue(rows=>rows.map(x=>x.id===product.id?{...x,photo_url:data.publicUrl}:x));setVariantProduct(x=>x?.id===product.id?{...x,photo_url:data.publicUrl}:x);setSyncStatus('Foto tersimpan')};
+  const copyProductImage=async(product:Product)=>{
+    if(!product.photo_url){setSyncStatus("Produk ini belum punya foto");return}
+    setSyncStatus("Menyalin foto…");
+    try{
+      if(!navigator.clipboard?.write||typeof ClipboardItem==="undefined")throw new Error("Clipboard gambar tidak didukung");
+      const response=await fetch(product.photo_url,{mode:"cors"});
+      if(!response.ok)throw new Error("Foto gagal dimuat");
+      const source=await response.blob();
+      const bitmap=await createImageBitmap(source);
+      const canvas=document.createElement("canvas");
+      canvas.width=bitmap.width;canvas.height=bitmap.height;
+      const context=canvas.getContext("2d");
+      if(!context)throw new Error("Foto gagal diproses");
+      context.drawImage(bitmap,0,0);bitmap.close();
+      const png=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Foto gagal diproses")),"image/png"));
+      await navigator.clipboard.write([new ClipboardItem({"image/png":png})]);
+      setSyncStatus("Foto tersalin — tinggal paste di Canva ✓");
+    }catch{
+      setSyncStatus("Browser tidak mengizinkan copy otomatis — buka foto lalu Copy Image");
+      window.open(product.photo_url,"_blank","noopener,noreferrer");
+    }
+  };
   const togglePublish=async(product:Product)=>{setSyncStatus(product.published?'Menarik produk dari landing page…':'Menyetujui produk…');const next=!product.published;if(next && !(rate>0)){setSyncStatus("Tunggu kurs otomatis sebelum publikasi");return;}const{error}=await supabase.from('products').update({published:next,approved_at:next?new Date().toISOString():null,approved_by:next?user?.id:null,currency_code:currency,currency_symbol:currencySymbol,fashion_cargo_per_kg:cargoRate,nonfashion_cargo_per_kg:otherCargoRate,status:next?'Ready':product.status}).eq('id',product.id);setSyncStatus(error?'Gagal mengubah publikasi':next?'Produk tayang di landing page':'Produk disembunyikan');if(!error){setCatalogue(rows=>rows.map(x=>x.id===product.id?{...x,published:next,status:next?'Ready':x.status}:x));setVariantProduct(x=>x?.id===product.id?{...x,published:next,status:next?'Ready':x.status}:x)}};
   const openVariants=async(product:Product)=>{setVariantProduct(product);const{data}=await supabase.from('product_variants').select('*').eq('product_id',product.id).order('created_at');setVariants((data||[]) as Variant[])};
   const openProductEditor=async(product:Product)=>{
@@ -1454,6 +1477,7 @@ function Dashboard() {
                   {variantProduct.photo_url ? <img src={variantProduct.photo_url} alt={variantProduct.name}/> : <div><PackageSearch size={34}/><span>Belum ada foto</span></div>}
                 </div>
                 <label className="photo-upload-button">Ganti / upload foto<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const file=e.target.files?.[0];if(file)uploadPhoto(variantProduct,file)}}/></label>
+                <button className="copy-photo-button" disabled={!variantProduct.photo_url} onClick={()=>copyProductImage(variantProduct)}><Copy size={15}/> Copy image untuk Canva</button>
                 {variantProduct.source_url && <a href={variantProduct.source_url} target="_blank" rel="noreferrer">Buka halaman sumber <ChevronRight size={14}/></a>}
                 <small>Foto hasil scraping sudah ditampilkan otomatis. Kamu tetap bisa menggantinya dengan foto sendiri.</small>
               </aside>
@@ -1584,7 +1608,7 @@ function Dashboard() {
                             <strong>{format(calc.sell)}</strong>
                             <span className={`status-badge ${p.status==="Ready"?"ready":""}`}>{p.status}</span>
                             <span className={`status-badge ${p.published?"live":""}`}>{p.published?"Tayang":"Belum tayang"}</span>
-                            <button className="edit-product-button" onClick={()=>openProductEditor(p)}><Pencil size={14}/> Edit</button>
+                            <div className="catalogue-actions"><button className="copy-image-button" disabled={!p.photo_url} title={p.photo_url?"Salin foto untuk ditempel ke Canva":"Belum ada foto"} onClick={()=>copyProductImage(p)}><Copy size={14}/> Copy image</button><button className="edit-product-button" onClick={()=>openProductEditor(p)}><Pencil size={14}/> Edit</button></div>
                           </div>})}
                         </div>
                       })}
