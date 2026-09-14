@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
@@ -28,6 +28,13 @@ import {
 import { supabase } from "../lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import Landing from "./landing";
+import ProductPhoto from "../components/product-photo";
+import "./catalogue-dashboard.css";
+import { filterCatalogue, catalogueCategoryNames, type CatalogueStatus } from "../lib/catalogue-search";
+import OrdersPanel from "../components/orders-panel";
+import { calculatePrice, defaultMargin, isFashion } from "../lib/pricing";
+import { type Order, paidAmount } from "../lib/commerce";
+import { supabaseConfigured } from "../lib/supabase";
 const stages = [
   ["Leads", 48, "#dac1c7"],
   ["Waitlist", 36, "#c98e9b"],
@@ -81,7 +88,7 @@ type Product = {
   fashion_cargo_per_kg:number;
   nonfashion_cargo_per_kg:number;
 };
-type Variant={id:string;product_id:string;name:string;sku:string;local_price:number;weight_grams:number;stock:number;active:boolean};
+type Variant={photo_url?:string|null;id:string;product_id:string;name:string;sku:string;local_price:number;weight_grams:number;stock:number;active:boolean;sale_mode:"stock"|"preorder";preorder_capacity:number|null};
 type ProductCategory={id:string;name:string;default_margin_percent:number;active:boolean};
 type Trip = {
   code: string;
@@ -99,6 +106,7 @@ type Trip = {
   fashion_cargo_per_kg: number;
   nonfashion_cargo_per_kg: number;
   minimum_margin_percent: number;
+  exchange_rate_idr: number | null;
 };
 const destinations = [
   { country: "Malaysia", currency: "MYR", symbol: "RM", city: "Kuala Lumpur" },
@@ -202,6 +210,10 @@ function Metric({
   );
 }
 export default function Home() {
+  if (!supabaseConfigured) return <div className="auth-screen"><div className="auth-card"><h1>Elsewhere sedang disiapkan</h1><p>Koneksi layanan belum dikonfigurasi. Silakan kembali lagi nanti.</p></div></div>;
+  return typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard") ? <Dashboard/> : <Landing/>;
+}
+function Dashboard() {
   const [nav, setNav] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -214,7 +226,7 @@ export default function Home() {
   const [recoveryMode,setRecoveryMode]=useState(false);
   const [newPassword,setNewPassword]=useState("");
   const [syncStatus, setSyncStatus] = useState("Menunggu login");
-  const [view, setView] = useState<"dashboard" | "trip" | "catalogue" | "product">(
+  const [view, setView] = useState<"dashboard" | "trip" | "catalogue" | "product" | "orders">(
     "dashboard",
   );
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -231,6 +243,10 @@ export default function Home() {
   const [catalogue, setCatalogue] = useState<Product[]>([]);
   const [categories,setCategories]=useState<ProductCategory[]>([]);
   const [categoryDraft,setCategoryDraft]=useState("");
+  const [catalogueQuery, setCatalogueQuery] = useState("");
+  const [catalogueStatus, setCatalogueStatus] = useState<CatalogueStatus>("all");
+  const [catalogueSort, setCatalogueSort] = useState<"default" | "name" | "code">("default");
+  const catalogueReturn = useRef<{id: string; y: number} | null>(null);
   const [categoryFilter,setCategoryFilter]=useState("Semua kategori");
   const [brandFilter,setBrandFilter]=useState("Semua brand");
   const [manageCategories,setManageCategories]=useState(false);
@@ -238,7 +254,7 @@ export default function Home() {
   const [productModal, setProductModal] = useState(false);
   const[variants,setVariants]=useState<Variant[]>([]);
   const[variantProduct,setVariantProduct]=useState<Product|null>(null);
-  const[variantDraft,setVariantDraft]=useState({name:'',sku:'',local_price:0,weight_grams:0,stock:0,active:true});
+  const[variantDraft,setVariantDraft]=useState({name:'',sku:'',local_price:0,weight_grams:0,stock:0,active:true,sale_mode:'preorder' as const,preorder_capacity:null as number|null});
   const [productDraft, setProductDraft] = useState({
     name: "",
     brand: "",
@@ -266,12 +282,18 @@ export default function Home() {
     status: "Belum dibayar",
   });
   const [capacity, setCapacity] = useState(50);
-  const [rate, setRate] = useState(535);
-  const [rateStatus, setRateStatus] = useState("Menyiapkan kurs…");
-  const [cargoRate, setCargoRate] = useState(95000);
+  const [rateDraft, setRateDraft] = useState<{trip: string; value: number} | null>(null);
+  const [rateStatus, setRateStatus] = useState("Menunggu kurs otomatis…");
+  const [cargoRate, setCargoRate] = useState(90000);
   const [productCategory, setProductCategory] = useState("Pakaian");
   const [targetFund, setTargetFund] = useState(12000000);
-  const [collected, setCollected] = useState(7400000);
+  const [commerceOrders, setCommerceOrders] = useState<Order[]>([]);
+  const [commerceError, setCommerceError] = useState("");
+  const [commerceRevision, setCommerceRevision] = useState(0);
+  const currentOrders = commerceOrders.filter(o => o.trip_code === activeTripCode);
+  const collected = currentOrders.reduce((sum, o) => sum + paidAmount(o), 0);
+  const grossOrderValue = currentOrders.filter(o => o.status !== "cancelled").reduce((sum,o) => sum + Number(o.total_idr),0);
+  const [otherCargoRate, setOtherCargoRate] = useState(90000);
   const [orderTarget, setOrderTarget] = useState(50);
   const [itemBaht, setItemBaht] = useState(200);
   const [itemGrams, setItemGrams] = useState(350);
@@ -285,11 +307,22 @@ export default function Home() {
   const done = tasks.filter((t) => t.done).length;
   const dashboardRoute=typeof window!=="undefined"&&window.location.pathname.startsWith("/dashboard");
   const activeTrip = trips.find((t) => t.code === activeTripCode);
+  const rate = rateDraft?.trip === activeTripCode ? rateDraft.value : 0;
+  const setRate = (value: number) => setRateDraft({ trip: activeTripCode, value });
   const currency = activeTrip?.currency_code || "MYR";
   const currencySymbol = activeTrip?.currency_symbol || "RM";
-  const confirmedOrders = activeTrip?.confirmed_orders || 0;
+  const confirmedOrders = currentOrders.filter(o => o.status !== "cancelled" && paidAmount(o) > 0).length;
   const availableBrands=useMemo(()=>Array.from(new Set(catalogue.filter(p=>categoryFilter==="Semua kategori"||p.category===categoryFilter).map(p=>p.brand||"Tanpa brand"))).sort(),[catalogue,categoryFilter]);
-  const visibleCatalogue=useMemo(()=>catalogue.filter(p=>(categoryFilter==="Semua kategori"||p.category===categoryFilter)&&(brandFilter==="Semua brand"||(p.brand||"Tanpa brand")===brandFilter)),[catalogue,categoryFilter,brandFilter]);
+  const visibleCatalogue = useMemo(() => filterCatalogue(catalogue, catalogueQuery, categoryFilter, brandFilter, catalogueStatus, catalogueSort), [catalogue, catalogueQuery, categoryFilter, brandFilter, catalogueStatus, catalogueSort]);
+  const catalogueCategories = useMemo(() => catalogueCategoryNames(catalogue, categories.map(c => c.name)), [catalogue, categories]);
+  const catalogueFiltered = Boolean(catalogueQuery.trim() || categoryFilter !== "Semua kategori" || brandFilter !== "Semua brand" || catalogueStatus !== "all");
+  const resetCatalogueFilters = () => { setCatalogueQuery(""); setCategoryFilter("Semua kategori"); setBrandFilter("Semua brand"); setCatalogueStatus("all"); };
+  const restoreCataloguePosition = () => requestAnimationFrame(() => {
+    const saved = catalogueReturn.current;
+    if (!saved) return;
+    document.getElementById(`catalogue-edit-${saved.id}`)?.focus({ preventScroll: true });
+    window.scrollTo({ top: saved.y, behavior: "instant" });
+  });
   const toggleCategory=(name:string)=>setOpenCategories(current=>{const next=new Set(current);next.has(name)?next.delete(name):next.add(name);return next});
   const pct = Math.round((confirmedOrders / Math.max(1, capacity)) * 100);
   const today = useMemo(
@@ -302,86 +335,37 @@ export default function Home() {
       }).format(new Date()),
     [],
   );
-  const acceptRate = (value: number, source: string, date: string) => {
-    if (!Number.isFinite(value) || value <= 0 || value > 100000)
-      throw new Error("Invalid currency rate");
-    setRate(value);
-    setRateStatus(`Live via ${source} · ${date}`);
-    localStorage.setItem(
-      `elsewhere-${currency.toLowerCase()}-idr`,
-      JSON.stringify({ value, source, date, savedAt: Date.now() }),
-    );
-  };
   const refreshRate = async () => {
-    setRateStatus("Memperbarui kurs…");
-    if(currency === "KPW"){
-      setRate(18);
-      setRateStatus("KPW tidak punya kurs pasar publik yang andal · isi manual");
-      return;
-    }
-    const providers = [
-      async () => {
-        const r = await fetch(`https://open.er-api.com/v6/latest/${currency}`, {
-          signal: AbortSignal.timeout(6000),
-        });
-        if (!r.ok) throw new Error();
-        const d:any = await r.json();
-        return {
-          value: Number(d.rates?.IDR),
-          source: "ExchangeRate-API",
-          date: new Date(d.time_last_update_unix * 1000).toLocaleDateString(
-            "id-ID",
-          ),
-        };
-      },
-      async () => {
-        const r = await fetch(
-          `https://api.frankfurter.app/latest?from=${currency}&to=IDR`,
-          { signal: AbortSignal.timeout(6000) },
-        );
-        if (!r.ok) throw new Error();
-        const d:any = await r.json();
-        return {
-          value: Number(d.rates?.IDR),
-          source: "Frankfurter",
-          date: d.date,
-        };
-      },
-    ];
-    for (const provider of providers) {
-      try {
-        const x = await provider();
-        acceptRate(x.value, x.source, x.date);
-        return;
-      } catch {}
-    }
-    try {
-      const cached = JSON.parse(
-        localStorage.getItem(`elsewhere-${currency.toLowerCase()}-idr`) ||
-          "null",
-      );
-      if (cached?.value > 0) {
-        setRate(cached.value);
-        setRateStatus(`Kurs tersimpan · ${cached.date}`);
-        return;
-      }
-    } catch {}
-    setRate(535);
-    setRateStatus("Fallback aman · edit jika perlu");
+    const { data, error } = await supabase.rpc("commerce_rate_status", { p_currency: currency });
+    setRate(Number(data?.rate) || 0);
+    setRateStatus(error || !data?.rate ? "Kurs belum tersedia atau sudah kedaluwarsa. Pesanan ditahan sampai kurs terbaru tersedia." : `Kurs otomatis · data ${new Date(data.updated_at).toLocaleString("id-ID")}${data.refresh_failed ? " · pembaruan tertunda" : ""}`);
   };
   useEffect(() => {
-    try {
-      const cached = JSON.parse(
-        localStorage.getItem(`elsewhere-${currency.toLowerCase()}-idr`) ||
-          "null",
-      );
-      if (cached?.value > 0) {
-        setRate(cached.value);
-        setRateStatus(`Kurs tersimpan · ${cached.date}`);
-      }
-    } catch {}
-    refreshRate();
-  }, [currency]);
+    if (!isMember) return;
+    let active = true;
+    const refresh = async () => {
+      const { data, error } = await supabase.rpc("commerce_rate_status", { p_currency: currency });
+      if (!active) return;
+      setRateDraft({trip: activeTripCode, value: Number(data?.rate) || 0});
+      setRateStatus(error || !data?.rate ? "Kurs belum tersedia atau sudah kedaluwarsa. Pesanan ditahan sampai kurs terbaru tersedia." : `Kurs otomatis · data ${new Date(data.updated_at).toLocaleString("id-ID")}${data.refresh_failed ? " · pembaruan tertunda" : ""}`);
+    };
+    void refresh();
+    const timer = setInterval(() => { void refresh(); }, 60000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isMember, currency, activeTripCode]);
+  useEffect(() => {
+    if (!user || !isMember) return;
+    let active = true;
+    const load = async () => {
+      const { data, error } = await supabase.from("orders").select("*,order_items(*),order_payments(*)").eq("trip_code", activeTripCode).order("created_at", { ascending: false });
+      if (!active) return;
+      if (error) setCommerceError("Data pesanan belum tersedia. Terapkan pembaruan database lalu perbarui halaman.");
+      else { setCommerceOrders((data || []) as Order[]); setCommerceError(""); }
+    };
+    load();
+    const timer = setInterval(load, 15000);
+    return () => { active = false; clearInterval(timer); };
+  }, [user, isMember, activeTripCode, commerceRevision]);
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user || null);
@@ -429,10 +413,11 @@ export default function Home() {
     setCategories((categoryResult.data||[]) as ProductCategory[]);
     const s = tripRows.find((t) => t.code === code);
     if (s) {
-      setCollected(Number(s.collected_fund));
+
       setOrderTarget(Number(s.target_orders));
       setCapacity(Number(s.target_orders));
       setCargoRate(Number(s.fashion_cargo_per_kg));
+      setOtherCargoRate(Number(s.nonfashion_cargo_per_kg));
       setBaseMargin(Number(s.minimum_margin_percent));
     }
     setSyncStatus("Tersinkron ke database");
@@ -508,7 +493,7 @@ export default function Home() {
   const requestPasswordReset=async()=>{
     if(!loginEmail.trim()){setAuthMessage("Masukkan emailmu dulu.");return}
     setAuthMessage("Mengirim link ganti password…");
-    const{error}=await supabase.auth.resetPasswordForEmail(loginEmail.trim(),{redirectTo:"https://elsewhere-dashboard-six.vercel.app/dashboard"});
+    const{error}=await supabase.auth.resetPasswordForEmail(loginEmail.trim(),{redirectTo:`${window.location.origin}/dashboard`});
     setAuthMessage(error?error.message:"Link ganti password sudah dikirim. Cek Inbox atau Spam.");
   };
   const submitNewPassword=async()=>{
@@ -528,10 +513,10 @@ export default function Home() {
   const remainingOrders = Math.max(1, orderTarget - confirmedOrders);
   const targetPerOrder = remaining / remainingOrders;
   const itemCost = itemBaht * rate;
-  const effectiveCargoRate = cargoRate + (productCategory === "Fashion" ? 0 : 5000);
+  const effectiveCargoRate = isFashion(productCategory) ? cargoRate : otherCargoRate;
   const itemCargo = (itemGrams / 1000) * effectiveCargoRate;
   const landed = itemCost + itemCargo;
-  const calculatorMargin=/makanan|food|snack|minuman/i.test(productCategory)?20:25;
+  const calculatorMargin = categories.find(c => c.name === productCategory)?.default_margin_percent ?? defaultMargin(productCategory);
   const targetProfit = (landed * calculatorMargin) / 100;
   const suggestedPrice = landed + targetProfit;
   const adaptiveMargin = landed ? (targetProfit / landed) * 100 : 0;
@@ -604,18 +589,12 @@ export default function Home() {
       | "margin_percent"
     >,
   ) => {
-    const productCost = Number(p.local_price || p.price_thb) * rate;
-    const cargo =
-      (Number(p.weight_grams) / 1000) *
-      (p.category === "Fashion" ? cargoRate : cargoRate + 5000);
-    const capital = productCost + cargo;
-    const categoryMargin=/makanan|food|snack|minuman/i.test(p.category)?20:25;
-    const margin = Number(p.margin_percent ?? categoryMargin);
-    const profit = (capital * margin) / 100;
-    return { productCost, cargo, capital, profit, sell: capital + profit };
+    return calculatePrice({ localPrice: Number(p.local_price ?? p.price_thb), grams: Number(p.weight_grams), category: p.category,
+      margin: p.margin_percent, rate,
+      fashionCargo: Number(activeTrip?.fashion_cargo_per_kg) || 0, otherCargo: Number(activeTrip?.nonfashion_cargo_per_kg) || 0 });
   };
   const nextProductCode = () =>
-    `P-${String(catalogue.length + 1).padStart(3, "0")}`;
+    `P-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
   const addProduct = async () => {
     if (!productDraft.name.trim() || !user) return;
     setSyncStatus("Menyimpan produk…");
@@ -628,13 +607,14 @@ export default function Home() {
         trip_code: activeTripCode,
         product_code: `${activeTripCode}-${nextProductCode()}`,
         created_by: user.id,
-        currency_code:currency,currency_symbol:currencySymbol,fashion_cargo_per_kg:cargoRate,nonfashion_cargo_per_kg:cargoRate+5000,
+        currency_code:currency,currency_symbol:currencySymbol,fashion_cargo_per_kg:cargoRate,nonfashion_cargo_per_kg:otherCargoRate,
       }).select('id,product_code').single();
     if (error) {
       setSyncStatus("Gagal menyimpan produk");
       return;
     }
-    await supabase.from('product_variants').insert({product_id:newProduct.id,name:'Default',sku:newProduct.product_code,local_price:price_thb,weight_grams:productDraft.weight_grams,stock:0,active:true,created_by:user.id});
+    const {error: variantError} = await supabase.from('product_variants').insert({product_id:newProduct.id,name:'Default',sku:newProduct.product_code,local_price:price_thb,weight_grams:productDraft.weight_grams,stock:0,active:true,created_by:user.id});
+    if (variantError) { setSyncStatus("Produk tersimpan, tetapi varian gagal dibuat. Buka editor untuk menambah varian."); await loadSharedData(activeTripCode); setProductModal(false); return; }
     setProductDraft({
       name: "",
       brand: "",
@@ -703,9 +683,10 @@ export default function Home() {
     if (!error) await loadSharedData();
   };
   const uploadPhoto=async(product:Product,file:File)=>{setSyncStatus('Mengunggah foto…');const ext=file.name.split('.').pop()?.toLowerCase()||'jpg';const path=`${product.trip_code}/${product.id}-${Date.now()}.${ext}`;const{error}=await supabase.storage.from('product-images').upload(path,file,{upsert:false});if(error){setSyncStatus('Gagal mengunggah foto');return}const{data}=supabase.storage.from('product-images').getPublicUrl(path);await saveProduct(product.id,'photo_url',data.publicUrl);setCatalogue(rows=>rows.map(x=>x.id===product.id?{...x,photo_url:data.publicUrl}:x));setVariantProduct(x=>x?.id===product.id?{...x,photo_url:data.publicUrl}:x);setSyncStatus('Foto tersimpan')};
-  const togglePublish=async(product:Product)=>{setSyncStatus(product.published?'Menarik produk dari landing page…':'Menyetujui produk…');const next=!product.published;const{error}=await supabase.from('products').update({published:next,approved_at:next?new Date().toISOString():null,approved_by:next?user?.id:null,currency_code:currency,currency_symbol:currencySymbol,fashion_cargo_per_kg:cargoRate,nonfashion_cargo_per_kg:cargoRate+5000,status:next?'Ready':product.status}).eq('id',product.id);setSyncStatus(error?'Gagal mengubah publikasi':next?'Produk tayang di landing page':'Produk disembunyikan');if(!error){setCatalogue(rows=>rows.map(x=>x.id===product.id?{...x,published:next,status:next?'Ready':x.status}:x));setVariantProduct(x=>x?.id===product.id?{...x,published:next,status:next?'Ready':x.status}:x)}};
+  const togglePublish=async(product:Product)=>{setSyncStatus(product.published?'Menarik produk dari landing page…':'Menyetujui produk…');const next=!product.published;if(next && !(rate>0)){setSyncStatus("Tunggu kurs otomatis sebelum publikasi");return;}const{error}=await supabase.from('products').update({published:next,approved_at:next?new Date().toISOString():null,approved_by:next?user?.id:null,currency_code:currency,currency_symbol:currencySymbol,fashion_cargo_per_kg:cargoRate,nonfashion_cargo_per_kg:otherCargoRate,status:next?'Ready':product.status}).eq('id',product.id);setSyncStatus(error?'Gagal mengubah publikasi':next?'Produk tayang di landing page':'Produk disembunyikan');if(!error){setCatalogue(rows=>rows.map(x=>x.id===product.id?{...x,published:next,status:next?'Ready':x.status}:x));setVariantProduct(x=>x?.id===product.id?{...x,published:next,status:next?'Ready':x.status}:x)}};
   const openVariants=async(product:Product)=>{setVariantProduct(product);const{data}=await supabase.from('product_variants').select('*').eq('product_id',product.id).order('created_at');setVariants((data||[]) as Variant[])};
   const openProductEditor=async(product:Product)=>{
+    catalogueReturn.current = { id: product.id, y: window.scrollY };
     await openVariants(product);
     setView("product");
     window.history.pushState({},"",`/dashboard/products/${product.id}`);
@@ -715,11 +696,11 @@ export default function Home() {
     setVariantProduct(null);
     setView("catalogue");
     window.history.pushState({},"","/dashboard");
-    window.scrollTo({top:0,behavior:"smooth"});
+    restoreCataloguePosition();
   };
-  const addVariant=async()=>{if(!variantProduct||!user||!variantDraft.name.trim())return;const{error}=await supabase.from('product_variants').insert({...variantDraft,product_id:variantProduct.id,created_by:user.id});if(!error){setVariantDraft({name:'',sku:'',local_price:0,weight_grams:0,stock:0,active:true});await openVariants(variantProduct)}};
-  const saveVariant=async(id:string,key:keyof Variant,value:string|number|boolean)=>{await supabase.from('product_variants').update({[key]:value,updated_at:new Date().toISOString()}).eq('id',id)};
-  const updateVariant=(id:string,key:keyof Variant,value:string|number|boolean)=>setVariants(rows=>rows.map(x=>x.id===id?{...x,[key]:value}:x));
+  const addVariant=async()=>{if(!variantProduct||!user||!variantDraft.name.trim())return;const{error}=await supabase.from('product_variants').insert({...variantDraft,product_id:variantProduct.id,created_by:user.id});if(!error){setVariantDraft({name:'',sku:'',local_price:0,weight_grams:0,stock:0,active:true,sale_mode:'preorder' as const,preorder_capacity:null as number|null});await openVariants(variantProduct)}};
+  const saveVariant=async(id:string,key:keyof Variant,value:string|number|boolean|null)=>{const {error}=await supabase.from('product_variants').update({[key]:value,updated_at:new Date().toISOString()}).eq('id',id);setSyncStatus(error ? "Varian gagal disimpan" : "Varian tersimpan"); if(error && variantProduct) await openVariants(variantProduct);};
+  const updateVariant=(id:string,key:keyof Variant,value:string|number|boolean|null)=>setVariants(rows=>rows.map(x=>x.id===id?{...x,[key]:value}:x));
   const deleteVariant=async(id:string)=>{await supabase.from('product_variants').delete().eq('id',id);if(variantProduct)await openVariants(variantProduct)};
   const addCategory=async()=>{
     const name=categoryDraft.trim();
@@ -759,17 +740,20 @@ export default function Home() {
       if(match){const product=catalogue.find(x=>x.id===match[1]);if(product){setVariantProduct(product);setView("product");return}}
       setVariantProduct(null);
       setView("catalogue");
+      restoreCataloguePosition();
     };
     window.addEventListener("popstate",handleBack);
     return()=>window.removeEventListener("popstate",handleBack);
   },[catalogue]);
-  const saveSetting = async (key: string, value: number) => {
+  const saveSetting = async (key: "fashion_cargo_per_kg" | "nonfashion_cargo_per_kg" | "target_orders", value: number) => {
     setSyncStatus("Menyimpan pengaturan…");
+    if (!Number.isFinite(value) || value < 0) { setSyncStatus("Isi nilai yang valid"); return; }
     const { error } = await supabase
       .from("trips")
       .update({ [key]: value, updated_at: new Date().toISOString() })
       .eq("code", activeTripCode);
     setSyncStatus(error ? "Gagal menyimpan" : "Pengaturan tersimpan");
+    if (!error) await loadSharedData(activeTripCode);
   };
   const selectTrip = (code: string) => {
     setActiveTripCode(code);
@@ -787,7 +771,7 @@ export default function Home() {
         city: d.city,
         currency_code: d.currency,
         currency_symbol: d.symbol,
-        name: `${d.country} Edit 01`,
+        name: d.country === "Malaysia" ? "Malaysia trip" : `${d.country} trip`,
         updated_at: new Date().toISOString(),
       })
       .eq("code", activeTripCode);
@@ -822,7 +806,8 @@ export default function Home() {
       .from("trips")
       .insert({
         code,
-        name: tripDraft.name || `${d.country} Edit`,
+        name: tripDraft.name || `${d.country} trip`,
+        fashion_cargo_per_kg: 90000, nonfashion_cargo_per_kg: 90000,
         country: d.country,
         city: tripDraft.city || d.city,
         currency_code: d.currency,
@@ -976,9 +961,8 @@ export default function Home() {
             <Users />
             Leads & waitlist <em>48</em>
           </a>
-          <a>
-            <ShoppingBag />
-            Orders <em>14</em>
+          <a href="/dashboard" className={view === "orders" ? "active" : ""} onClick={e => { e.preventDefault(); setView("orders"); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); }}>
+            <ShoppingBag /> Orders <em>{currentOrders.length}</em>
           </a>
           <a
             className={view === "catalogue" || view === "product" ? "active" : ""}
@@ -1083,7 +1067,9 @@ export default function Home() {
             </button>
           </div>
         </header>
-        {view === "trip" ? (
+        <div className="commerce-trip-bar"><label>Trip aktif <select value={activeTripCode} onChange={e => { setActiveTripCode(e.target.value); setVariantProduct(null); if(view === "product") setView("catalogue"); }}>{trips.map(t => <option key={t.code} value={t.code}>{t.name} · {t.code}</option>)}</select></label><a href="/" target="_blank" rel="noreferrer">Lihat katalog ↗</a><output>{syncStatus}</output></div>
+        {commerceError && <p role="alert" className="commerce-error">{commerceError}</p>}
+        {view === "orders" ? <OrdersPanel key={activeTripCode} tripCode={activeTripCode} onChange={() => setCommerceRevision(n => n + 1)}/> : view === "trip" ? (
           <section className="trip-workspace">
             <div className="trip-switcher">
               <label>
@@ -1511,14 +1497,18 @@ export default function Home() {
                     <div><span>Harga barang</span><b>{format(productPricing(variantProduct).productCost)}</b></div>
                     <div><span>Cargo</span><b>{format(productPricing(variantProduct).cargo)}</b></div>
                     <div><span>Modal</span><b>{format(productPricing(variantProduct).capital)}</b></div>
-                    <div className="recommended"><span>Harga jual rekomendasi</span><strong>{format(productPricing(variantProduct).sell)}</strong></div>
+                    <div className="recommended"><span>Harga jual · pembulatan Rp1.000</span><strong>{format(productPricing(variantProduct).sell)}</strong></div>
+                    <div><span>Estimasi profit / unit</span><strong>{format(productPricing(variantProduct).profit)}</strong></div>
                   </div>
+                  <p className="modal-help">Profit = harga jual setelah pembulatan − modal barang − kargo. Belum dikurangi biaya operasional, ongkir domestik, dan biaya pembayaran.</p>
                 </article>
                 <article className="panel editor-section">
                   <div className="editor-section-title"><div><span>VARIAN PRODUK</span><h2>Ukuran, berat & harga</h2></div><small>Setiap varian dihitung terpisah</small></div>
-                  <p className="modal-help">Contoh: Milo 400g dan 900g, atau pakaian ukuran S, M, dan L. Isi berat setiap varian agar cargo akurat.</p>
+                  <p className="modal-help">Isi harga dan berat setiap varian. Stok/kuota adalah jumlah total untuk trip ini, termasuk yang sudah dipesan. Preorder tanpa batas tidak memerlukan stok. Isi kuota hanya jika ingin membatasi pesanan.</p>
+                  {variants.map(v => <div className="variant-availability" key={v.id}><strong>{v.name}</strong><label>Penjualan<select value={v.sale_mode} onChange={e => { updateVariant(v.id,"sale_mode",e.target.value); saveVariant(v.id,"sale_mode",e.target.value); }}><option value="preorder">Preorder</option><option value="stock">Ready stock</option></select></label><label>Kuota total PO<input type="number" min={0} step={1} value={v.preorder_capacity ?? ""} placeholder="Tanpa batas" onChange={e => updateVariant(v.id,"preorder_capacity",(e.target.value === "" ? null : Number(e.target.value)))} onBlur={e => saveVariant(v.id,"preorder_capacity",e.target.value === "" ? null : Number(e.target.value))}/></label><label><input type="checkbox" checked={v.active} onChange={e => { updateVariant(v.id,"active",e.target.checked); saveVariant(v.id,"active",e.target.checked); }}/> Aktif</label></div>)}
+                  <div className="variant-photo-list">{variants.map(v=><div className="variant-photo-row" key={v.id}><div className="variant-photo-preview"><ProductPhoto key={`${v.id}-${v.photo_url}`} variant={v} product={variantProduct} alt={`${variantProduct.name} — ${v.name}`}/></div><label>Foto · {v.name}<input type="url" aria-label={`Link foto ${v.name}`} value={v.photo_url || ''} placeholder="https://… (kosong = foto produk)" onChange={e=>updateVariant(v.id,'photo_url',e.target.value)} onBlur={e=>{const url=e.target.value.trim();if(url&&!/^https?:\/\//i.test(url)){setSyncStatus('Gunakan link foto http atau https');return;}saveVariant(v.id,'photo_url',url)}}/><small>Link foto varian dari Excel dapat disimpan di sini. Foto ini mengikuti pilihan varian di katalog.</small></label></div>)}</div>
                   <div className="variant-table-head"><span>Nama varian</span><span>Harga {currency}</span><span>Berat</span><span>Stok</span><span>Harga jual</span><span/></div>
-                  <div className="variant-list">{variants.map(v=>{const calc=productPricing({local_price:v.local_price,price_thb:v.local_price,weight_grams:v.weight_grams,category:variantProduct.category,margin_percent:variantProduct.margin_percent});return <div className="variant-row" key={v.id}><input value={v.name} onChange={e=>updateVariant(v.id,'name',e.target.value)} onBlur={e=>saveVariant(v.id,'name',e.target.value)} placeholder="Nama/ukuran"/><input type="number" value={v.local_price||''} onChange={e=>updateVariant(v.id,'local_price',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'local_price',Number(e.target.value))} placeholder={currency}/><input type="number" value={v.weight_grams||''} onChange={e=>updateVariant(v.id,'weight_grams',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'weight_grams',Number(e.target.value))} placeholder="gram"/><input type="number" value={v.stock||''} onChange={e=>updateVariant(v.id,'stock',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'stock',Number(e.target.value))} placeholder="stok"/><strong>{format(calc.sell)}</strong><button className="delete-expense" onClick={()=>deleteVariant(v.id)}><Trash2 size={15}/></button></div>})}</div>
+                  <div className="variant-list">{variants.map(v=>{const calc=productPricing({local_price:v.local_price,price_thb:v.local_price,weight_grams:v.weight_grams,category:variantProduct.category,margin_percent:variantProduct.margin_percent});return <div className="variant-row" key={v.id}><input value={v.name} onChange={e=>updateVariant(v.id,'name',e.target.value)} onBlur={e=>saveVariant(v.id,'name',e.target.value)} placeholder="Nama/ukuran"/><input type="number" value={v.local_price||''} onChange={e=>updateVariant(v.id,'local_price',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'local_price',Number(e.target.value))} placeholder={currency}/><input type="number" value={v.weight_grams||''} onChange={e=>updateVariant(v.id,'weight_grams',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'weight_grams',Number(e.target.value))} placeholder="gram"/><input type="number" value={v.stock||''} onChange={e=>updateVariant(v.id,'stock',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'stock',Number(e.target.value))} placeholder="stok"/><div className="variant-profit"><strong>Jual {format(calc.sell)}</strong><small>Modal {format(calc.capital)}</small><small>Profit {format(calc.profit)} / unit</small></div><button className="delete-expense" onClick={()=>deleteVariant(v.id)}><Trash2 size={15}/></button></div>})}</div>
                   <div className="variant-add"><input value={variantDraft.name} onChange={e=>setVariantDraft(x=>({...x,name:e.target.value}))} placeholder="Contoh: Size M"/><input type="number" value={variantDraft.local_price||''} onChange={e=>setVariantDraft(x=>({...x,local_price:Number(e.target.value)}))} placeholder={`Harga ${currency}`}/><input type="number" value={variantDraft.weight_grams||''} onChange={e=>setVariantDraft(x=>({...x,weight_grams:Number(e.target.value)}))} placeholder="Berat gram"/><input type="number" value={variantDraft.stock||''} onChange={e=>setVariantDraft(x=>({...x,stock:Number(e.target.value)}))} placeholder="Stok"/><button onClick={addVariant}><Plus size={14}/> Tambah varian</button></div>
                 </article>
                 <div className="editor-danger-zone"><button onClick={async()=>{await deleteProduct(variantProduct.id);closeProductEditor()}}><Trash2 size={14}/> Hapus produk</button></div>
@@ -1562,7 +1552,7 @@ export default function Home() {
               <article>
                 <span>Cargo fashion</span>
                 <strong>{format(cargoRate)}/kg</strong>
-                <small>Non-fashion + Rp5.000/kg</small>
+                <small>Non-fashion {format(otherCargoRate)}/kg</small>
               </article>
               <article>
                 <span>Margin otomatis</span>
@@ -1571,16 +1561,26 @@ export default function Home() {
               </article>
             </div>
             <article className="panel catalogue-organizer">
-              <div className="catalogue-filters">
-                <div><span>LIHAT PRODUK BERDASARKAN</span><h2>Kategori & brand</h2></div>
-                <label>Kategori<select value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setBrandFilter("Semua brand")}}><option>Semua kategori</option>{categories.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
+              <div className="dashboard-catalogue-search">
+                <label htmlFor="catalogue-search">Cari produk</label>
+                <div><Search size={19} aria-hidden="true"/><input id="catalogue-search" type="search" autoComplete="off" placeholder="Nama, kode produk, brand, atau kategori…" value={catalogueQuery} onChange={e=>setCatalogueQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Escape")setCatalogueQuery("")}}/>{catalogueQuery&&<button onClick={()=>setCatalogueQuery("")} aria-label="Hapus pencarian"><X size={17}/></button>}</div>
+              </div>
+              <div className="dashboard-catalogue-controls">
+                <label>Kategori<select value={categoryFilter} onChange={e=>{setCategoryFilter(e.target.value);setBrandFilter("Semua brand")}}><option>Semua kategori</option>{catalogueCategories.map(name=><option key={name}>{name}</option>)}</select></label>
                 <label>Brand<select value={brandFilter} onChange={e=>setBrandFilter(e.target.value)}><option>Semua brand</option>{availableBrands.map(b=><option key={b}>{b}</option>)}</select></label>
-                <button onClick={()=>setManageCategories(x=>!x)}>{manageCategories?"Tutup pengaturan":"Atur kategori"}</button>
+                <label>Status<select value={catalogueStatus} onChange={e=>setCatalogueStatus(e.target.value as CatalogueStatus)}><option value="all">Semua status</option><option value="Draft">Draft</option><option value="Ready">Ready</option><option value="Archived">Archived</option><option value="published">Tayang</option><option value="unpublished">Belum tayang</option></select></label>
+                <label>Urutan dalam brand<select value={catalogueSort} onChange={e=>setCatalogueSort(e.target.value as typeof catalogueSort)}><option value="default">Urutan awal</option><option value="name">Nama A–Z</option><option value="code">Kode produk</option></select></label>
+                <button onClick={()=>setManageCategories(x=>!x)} aria-expanded={manageCategories}>{manageCategories?"Tutup pengaturan":"Atur kategori"}</button>
+              </div>
+              <div className="dashboard-catalogue-results">
+                <p role="status" aria-live="polite"><strong>{visibleCatalogue.length}</strong> dari {catalogue.length} produk{catalogueQuery.trim() ? ` untuk “${catalogueQuery.trim()}”` : ""}</p>
+                <div>{catalogueFiltered ? <button onClick={resetCatalogueFilters}>Reset pencarian & filter</button> : <><button onClick={()=>setOpenCategories(new Set(catalogueCategories))}>Buka semua</button><button onClick={()=>setOpenCategories(new Set())}>Tutup semua</button></>}</div>
               </div>
               {manageCategories&&<div className="category-manager"><div className="category-add"><input value={categoryDraft} onChange={e=>setCategoryDraft(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory()}} placeholder="Nama kategori baru"/><button onClick={addCategory}><Plus size={14}/> Tambah kategori</button></div>{categories.map(c=><div className="category-manage-row" key={c.id}><input defaultValue={c.name} onBlur={e=>renameCategory(c,e.target.value)}/><span>{catalogue.filter(p=>p.category===c.name).length} produk</span><span>Margin {c.default_margin_percent}%</span><button onClick={()=>deleteCategory(c)} disabled={catalogue.some(p=>p.category===c.name)}><Trash2 size={14}/></button></div>)}</div>}
             </article>
             <article className="panel catalogue-panel">
-              <div className="catalogue-table">
+              {visibleCatalogue.length === 0 && <div className="dashboard-catalogue-empty"><PackageSearch size={30} aria-hidden="true"/><h2>{catalogue.length ? "Produk tidak ditemukan" : "Katalog trip ini masih kosong"}</h2><p>{catalogue.length ? "Coba kata yang lebih singkat atau ubah filter kategori, brand, dan status." : "Tambahkan produk pertama untuk mulai menyusun katalog."}</p><button onClick={catalogue.length ? resetCatalogueFilters : ()=>setProductModal(true)}>{catalogue.length ? "Reset pencarian & filter" : "Tambah produk"}</button></div>}
+              <div className="catalogue-table" hidden={visibleCatalogue.length === 0}>
                 <div className="catalogue-row catalogue-head">
                   <span>Produk</span>
                   <span>Kategori</span>
@@ -1591,16 +1591,17 @@ export default function Home() {
                   <span>Landing page</span>
                   <span>Aksi</span>
                 </div>
-                {categories.filter(c=>categoryFilter==="Semua kategori"||c.name===categoryFilter).map(category=>{
+                {catalogueCategories.filter(name=>(categoryFilter==="Semua kategori"||name===categoryFilter)&&(!catalogueFiltered||visibleCatalogue.some(p=>p.category===name))).map(name=>{
+                  const category = {name, id: name};
                   const categoryProducts=visibleCatalogue.filter(p=>p.category===category.name);
                   const brands=Array.from(new Set(categoryProducts.map(p=>p.brand||"Tanpa brand"))).sort();
-                  const opened=openCategories.has(category.name);
+                  const opened=catalogueFiltered || openCategories.has(category.name);
                   return <section className={`catalogue-category ${opened?"open":""}`} key={category.id}>
-                    <button className="catalogue-category-row" onClick={()=>toggleCategory(category.name)}>
+                    <button className="catalogue-category-row" aria-expanded={opened} aria-disabled={catalogueFiltered} onClick={()=>{if(!catalogueFiltered)toggleCategory(category.name)}}>
                       <span className="category-chevron">{opened?<ChevronDown size={17}/>:<ChevronRight size={17}/>}</span>
                       <span><b>{category.name}</b><small>{brands.length} brand</small></span>
                       <strong>{categoryProducts.length} produk</strong>
-                      <small>{opened?"Tutup kategori":"Buka kategori"}</small>
+                      <small>{catalogueFiltered?"Hasil filter" : opened?"Tutup kategori":"Buka kategori"}</small>
                     </button>
                     {opened&&<div className="catalogue-category-content">
                       {categoryProducts.length===0?<div className="empty-category">Belum ada produk dalam kategori ini.</div>:brands.map(brand=>{
@@ -1608,14 +1609,14 @@ export default function Home() {
                         return <div className="catalogue-brand-group" key={brand}>
                           <div className="catalogue-brand-row"><span>BRAND</span><b>{brand}</b><small>{brandProducts.length} produk</small></div>
                           {brandProducts.map(p=>{const calc=productPricing(p);return <div className="catalogue-row" key={p.id}>
-                            <div className="product-identity"><div className="catalogue-thumb">{p.photo_url?<img src={p.photo_url} alt=""/>:<PackageSearch size={18}/>}</div><span><b>{p.name}</b><small>{p.product_code}</small></span></div>
+                            <div className="product-identity"><div className="catalogue-thumb">{p.photo_url?<img src={p.photo_url} alt="" loading="lazy"/>:<PackageSearch size={18}/>}</div><span><b>{p.name}</b><small>{p.product_code}</small></span></div>
                             <span className="catalogue-pill">{p.category}</span>
                             <b>{currencySymbol}{Number(p.local_price||p.price_thb).toLocaleString("id-ID")}</b>
                             <span className={!p.weight_grams?"needs-data":""}>{p.weight_grams?`${p.weight_grams} g`:"Belum diisi"}</span>
-                            <strong>{format(calc.sell)}</strong>
+                            <strong>{format(calc.sell)}<small className="catalogue-profit">Modal {format(calc.capital)}<br/>Profit {format(calc.profit)} / unit</small></strong>
                             <span className={`status-badge ${p.status==="Ready"?"ready":""}`}>{p.status}</span>
                             <span className={`status-badge ${p.published?"live":""}`}>{p.published?"Tayang":"Belum tayang"}</span>
-                            <button className="edit-product-button" onClick={()=>openProductEditor(p)}><Pencil size={14}/> Edit</button>
+                            <button id={`catalogue-edit-${p.id}`} className="edit-product-button" aria-label={`Edit ${p.name}`} onClick={()=>openProductEditor(p)}><Pencil size={14}/> Edit</button>
                           </div>})}
                         </div>
                       })}
@@ -1847,34 +1848,17 @@ export default function Home() {
               </div>
             </section>
             <section className="metrics">
-              <Metric
-                label="Total leads"
-                value="48"
-                note="↑ 12 this week"
-                tone="positive"
-              />
-              <Metric
-                label="Paid orders"
-                value="14"
-                note="28% of final target"
-              />
-              <Metric
-                label="Gross order value"
-                value="Rp11,8jt"
-                note="Rp10,2jt remaining"
-              />
-              <Metric
-                label="Cash collected"
-                value="Rp7,4jt"
-                note="63% collection rate"
-              />
+              <Metric label="Pesanan masuk" value={commerceError ? "—" : String(currentOrders.length)} note="Pesanan dari katalog"/>
+              <Metric label="Order dengan pembayaran" value={commerceError ? "—" : String(confirmedOrders)} note="DP atau pelunasan terverifikasi"/>
+              <Metric label="Nilai pesanan aktif" value={commerceError ? "—" : format(grossOrderValue)} note="Tidak termasuk pesanan dibatalkan"/>
+              <Metric label="Dana terkumpul" value={commerceError ? "—" : format(collected)} note="Pembayaran terverifikasi"/>
             </section>
             <section className="goal-panel">
               <div className="goal-main">
                 <span>Target dana {activeTrip?.name}</span>
                 <strong>{format(targetFund)}</strong>
                 <p>
-                  Sudah terkumpul <b>{format(collected)}</b> dari {confirmedOrders} paid orders
+                  Sudah terkumpul <b>{format(collected)}</b> dari {confirmedOrders} order dengan pembayaran
                 </p>
                 <div className="goal-bar">
                   <i
@@ -1903,12 +1887,8 @@ export default function Home() {
                   Dana terkumpul
                   <input
                     type="number"
-                    value={collected || ""}
-                    placeholder="Masukkan dana"
-                    onChange={(e) => setCollected(Number(e.target.value))}
-                    onBlur={(e) =>
-                      saveSetting("collected_fund", Number(e.target.value))
-                    }
+                    value={collected}
+                    readOnly
                   />
                 </label>
                 <label>
@@ -1923,6 +1903,7 @@ export default function Home() {
                     }
                   />
                 </label>
+                <label>Tarif cargo non-fashion / kg<input type="number" min={0} value={otherCargoRate} onChange={e => setOtherCargoRate(Number(e.target.value))} onBlur={e => saveSetting("nonfashion_cargo_per_kg", Number(e.target.value))}/></label>
                 <label>
                   Tarif cargo fashion / kg
                   <input
@@ -1950,7 +1931,7 @@ export default function Home() {
                   </p>
                 </div>
                 <button onClick={refreshRate}>
-                  <RefreshCw size={15} /> Refresh kurs
+                  <RefreshCw size={15} /> Perbarui tampilan kurs
                 </button>
               </div>
               <div className="order-calc">
@@ -2000,7 +1981,8 @@ export default function Home() {
                         maximumFractionDigits: 2,
                       })}
                     </b>
-                    <input aria-label="Kurs manual ke rupiah" type="number" value={rate||""} onChange={(e)=>{setRate(Number(e.target.value));setRateStatus("Kurs manual untuk kalkulasi ini")}} />
+                    <p>Kurs diperiksa otomatis setiap jam. Data penyedia diperbarui harian.</p>
+                    <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Sumber: ExchangeRate-API</a>
                     <small>{rateStatus}</small>
                   </div>
                 </div>
@@ -2026,7 +2008,7 @@ export default function Home() {
                 </div>
                 <div className="price-result">
                   <Plane size={20} />
-                  <span>Harga jual rekomendasi</span>
+                  <span>Harga jual · pembulatan Rp1.000</span>
                   <strong>{format(suggestedPrice)}</strong>
                   <p>
                     Target untung dipakai <b>{format(targetProfit)}</b> ·{" "}
@@ -2043,7 +2025,7 @@ export default function Home() {
                 <div className="panel-head">
                   <div>
                     <span>Sales funnel</span>
-                    <h2>From interest to paid order</h2>
+                    <h2>Contoh funnel pemasaran</h2><p>Data ilustrasi, belum terhubung ke transaksi.</p>
                   </div>
                   <button>
                     View leads <ChevronRight size={15} />
@@ -2085,7 +2067,7 @@ export default function Home() {
                 <div className="panel-head">
                   <div>
                     <span>Action center</span>
-                    <h2>Do these today</h2>
+                    <h2>Checklist contoh</h2><p>Centang belum disimpan ke database.</p>
                   </div>
                   <small>
                     {done}/{tasks.length} done
@@ -2128,7 +2110,7 @@ export default function Home() {
                 <div className="panel-head">
                   <div>
                     <span>Demand intelligence</span>
-                    <h2>Most requested products</h2>
+                    <h2>Contoh permintaan produk</h2><p>Data ilustrasi, bukan laporan pesanan.</p>
                   </div>
                   <button>
                     See all <ChevronRight size={15} />

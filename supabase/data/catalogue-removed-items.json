@@ -1,0 +1,37 @@
+{
+  "checked_at": "2026-09-14",
+  "source": "https://docs.google.com/spreadsheets/d/1j-KXMU8ddKaRckwlmuYUfr4AWbjoL940OKC4VNfONSs/edit",
+  "scope": "Only removed Milo rows; other existing products are outside this removal scope.",
+  "removed": [
+    {
+      "name": "Milo Activ-Go Ready-to-Drink",
+      "size": "5 × 200ml",
+      "previous_row": 17,
+      "action": "Deactivate exact matching variant after resolving staff database ID; preserve order history."
+    },
+    {
+      "name": "Milo Activ-Go UHT",
+      "size": "8 × 125ml",
+      "previous_row": 18,
+      "action": "Deactivate exact matching variant after resolving staff database ID; preserve order history."
+    },
+    {
+      "name": "Milo Actigen-E UHT Chocolate Drink",
+      "size": "6 × 200ml",
+      "previous_row": 19,
+      "action": "Deactivate exact matching variant after resolving staff database ID; preserve order history."
+    },
+    {
+      "name": "Milo Activ-Go Nutripluz UHT",
+      "size": "6 × 200ml",
+      "previous_row": 20,
+      "action": "Deactivate exact matching variant after resolving staff database ID; preserve order history."
+    },
+    {
+      "name": "Milo Ready-to-Drink Protein",
+      "size": "500ml",
+      "previous_row": 23,
+      "action": "Deactivate exact matching variant after resolving staff database ID; preserve order history."
+    }
+  ]
+}

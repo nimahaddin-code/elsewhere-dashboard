@@ -1,102 +1,62 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  ChevronDown,
-  Heart,
-  Menu,
-  Search,
-  ShoppingBag,
-  Sparkles,
-} from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, Search, ShoppingBag, Sparkles } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
-type PublicProduct = {
-  id: string;
-  name: string;
-  brand: string;
-  category: string;
-  photo_url: string;
-  product_type: string;
-  currency_code: string;
-  currency_symbol: string;
-  fashion_cargo_per_kg: number;
-  nonfashion_cargo_per_kg: number;
-  product_variants: Array<{
-    id: string;
-    name: string;
-    local_price: number;
-    weight_grams: number;
-    stock: number;
-  }>;
-};
-const marginFor = (category: string) =>
-  /makanan|food|snack|minuman/i.test(category) ? 20 : 25;
-const rupiah = (n: number) =>
-  new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(n);
+import type {
+  CatalogueProduct as PublicProduct,
+  CatalogueVariant,
+} from '../lib/commerce';
+import { rupiah } from '../lib/pricing';
+import OrderForm from '../components/order-form';
+import ProductPhoto from '../components/product-photo';
 
 export default function Landing() {
   const [items, setItems] = useState<PublicProduct[]>([]);
-  const [rates, setRates] = useState<Record<string, number>>({});
-  const [category, setCategory] = useState("Semua");
-  const [brand, setBrand] = useState("Semua");
-  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [ordering, setOrdering] = useState<{
+    product: PublicProduct;
+    variant: CatalogueVariant;
+  } | null>(null);
+  const [category, setCategory] = useState('Semua');
+  const [brand, setBrand] = useState('Semua');
+  const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Record<string, string>>({});
   const load = async () => {
-    const { data } = await supabase
-      .from("products")
-      .select(
-        "id,name,brand,category,photo_url,product_type,currency_code,currency_symbol,fashion_cargo_per_kg,nonfashion_cargo_per_kg,product_variants(id,name,local_price,weight_grams,stock)",
-      )
-      .eq("published", true)
-      .order("approved_at", { ascending: false });
-    setItems((data || []) as PublicProduct[]);
+    try {
+      const { data, error } = await supabase.rpc('commerce_catalogue');
+      if (error) throw error;
+      setItems((data || []) as PublicProduct[]);
+      setLoadError('');
+    } catch {
+      setLoadError('Katalog belum bisa dimuat. Silakan coba lagi.');
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => {
-    load();
-    const channel = supabase
-      .channel("public-catalogue")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "products" },
-        load,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "product_variants" },
-        load,
-      )
-      .subscribe();
+    void load();
+    // Public tables are private. Refresh the safe catalogue RPC instead of exposing raw rows.
+    const refresh = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(timer);
+      window.removeEventListener('focus', refresh);
     };
   }, []);
-  useEffect(() => {
-    const currencies = [...new Set(items.map((x) => x.currency_code))];
-    Promise.all(
-      currencies.map(async (code) => {
-        try {
-          const r = await fetch(`https://open.er-api.com/v6/latest/${code}`);
-          const d: any = await r.json();
-          return [code, Number(d.rates?.IDR) || 0] as const;
-        } catch {
-          return [code, 0] as const;
-        }
-      }),
-    ).then((x) => setRates(Object.fromEntries(x)));
-  }, [items]);
   const categories = useMemo(
-    () => ["Semua", ...new Set(items.map((x) => x.category))],
+    () => ['Semua', ...new Set(items.map((x) => x.category))],
     [items],
   );
   const brands = useMemo(
     () => [
-      "Semua",
+      'Semua',
       ...new Set(
         items
-          .filter((x) => category === "Semua" || x.category === category)
+          .filter((x) => category === 'Semua' || x.category === category)
           .map((x) => x.brand)
           .filter(Boolean),
       ),
@@ -105,23 +65,11 @@ export default function Landing() {
   );
   const shown = items.filter(
     (x) =>
-      (category === "Semua" || x.category === category) &&
-      (brand === "Semua" || x.brand === brand) &&
+      (category === 'Semua' || x.category === category) &&
+      (brand === 'Semua' || x.brand === brand) &&
       `${x.name} ${x.brand}`.toLowerCase().includes(query.toLowerCase()),
   );
-  const price = (
-    p: PublicProduct,
-    v: PublicProduct["product_variants"][number],
-  ) => {
-    const goods = Number(v.local_price) * (rates[p.currency_code] || 0);
-    const cargo =
-      (Number(v.weight_grams) / 1000) *
-      (p.category === "Fashion"
-        ? Number(p.fashion_cargo_per_kg)
-        : Number(p.nonfashion_cargo_per_kg));
-    const capital = goods + cargo;
-    return capital * (1 + marginFor(p.category) / 100);
-  };
+  const countries = [...new Set(items.map((p) => p.country))];
   return (
     <div className="storefront">
       <div className="store-strip">
@@ -140,30 +88,29 @@ export default function Landing() {
             placeholder="Cari produk atau brand..."
           />
         </div>
-        <div className="store-actions">
-          <Heart />
-          <ShoppingBag />
-        </div>
+        <a href="/dashboard" className="store-team-link">
+          Area tim
+        </a>
       </header>
       <nav className="store-nav">
         <button
-          className={category === "Semua" ? "active" : ""}
+          className={category === 'Semua' ? 'active' : ''}
           onClick={() => {
-            setCategory("Semua");
-            setBrand("Semua");
+            setCategory('Semua');
+            setBrand('Semua');
           }}
         >
           New In
         </button>
         {categories
-          .filter((x) => x !== "Semua")
+          .filter((x) => x !== 'Semua')
           .map((c) => (
             <div className="nav-category" key={c}>
               <button
-                className={category === c ? "active" : ""}
+                className={category === c ? 'active' : ''}
                 onClick={() => {
                   setCategory(c);
-                  setBrand("Semua");
+                  setBrand('Semua');
                 }}
               >
                 {c}
@@ -172,7 +119,7 @@ export default function Landing() {
               <div className="brand-menu">
                 <b>Brands</b>
                 {[
-                  "Semua",
+                  'Semua',
                   ...new Set(
                     items
                       .filter((x) => x.category === c)
@@ -197,7 +144,10 @@ export default function Landing() {
       <section className="store-hero">
         <div>
           <span>
-            <Sparkles size={14} /> MALAYSIA EDIT
+            <Sparkles size={14} />{' '}
+            {countries.length
+              ? countries.join(' · ').toUpperCase() + ' EDIT'
+              : 'ELSEWHERE EDIT'}
           </span>
           <h1>
             Your Asia wishlist,
@@ -212,8 +162,8 @@ export default function Landing() {
         </div>
         <div className="hero-stamp">
           <small>FIRST DROP</small>
-          <strong>MY</strong>
-          <span>2026</span>
+          <strong>PO</strong>
+          <span>OPEN EDIT</span>
         </div>
       </section>
       <section className="catalogue-section" id="catalogue">
@@ -229,7 +179,7 @@ export default function Landing() {
             value={category}
             onChange={(e) => {
               setCategory(e.target.value);
-              setBrand("Semua");
+              setBrand('Semua');
             }}
           >
             {categories.map((x) => (
@@ -242,7 +192,14 @@ export default function Landing() {
             ))}
           </select>
         </div>
-        {shown.length ? (
+        {loading ? (
+          <output>Memuat katalog…</output>
+        ) : loadError ? (
+          <div className="catalogue-empty" role="alert">
+            <p>{loadError}</p>
+            <button onClick={load}>Coba lagi</button>
+          </div>
+        ) : shown.length ? (
           <div className="product-grid">
             {shown.map((p) => {
               const variants = p.product_variants || [];
@@ -251,24 +208,15 @@ export default function Landing() {
               return (
                 <article className="product-card" key={p.id}>
                   <div className="product-photo">
-                    {p.photo_url ? (
-                      <img src={p.photo_url} alt={p.name} />
-                    ) : (
-                      <div>
-                        <ShoppingBag />
-                        <span>Photo coming soon</span>
-                      </div>
-                    )}
-                    <button aria-label="Simpan">
-                      <Heart size={17} />
-                    </button>
+                    <ProductPhoto key={`${p.id}-${v?.id || 'default'}`} product={p} variant={v} alt={`${p.name}${v ? ` — ${v.name}` : ''}`}/>
+
                   </div>
                   <div className="product-copy">
-                    <span>{p.brand || "Elsewhere find"}</span>
+                    <span>{p.brand || 'Elsewhere find'}</span>
                     <h3>{p.name}</h3>
                     {variants.length > 0 && (
                       <select
-                        value={v?.id || ""}
+                        value={v?.id || ''}
                         onChange={(e) =>
                           setSelected((x) => ({ ...x, [p.id]: e.target.value }))
                         }
@@ -276,21 +224,43 @@ export default function Landing() {
                         {variants.map((x) => (
                           <option key={x.id} value={x.id}>
                             {x.name}
-                            {x.weight_grams ? ` · ${x.weight_grams}g` : ""}
+                            {x.available === null ? ' · Preorder tersedia' : ` · ${x.available} ${x.sale_mode === 'stock' ? 'stok' : 'kuota PO'}`}
                           </option>
                         ))}
                       </select>
                     )}
                     <div>
                       <strong>
-                        {v && rates[p.currency_code]
-                          ? rupiah(price(p, v))
-                          : "Menghitung harga..."}
+                        {v?.unit_price_idr
+                          ? rupiah(Number(v.unit_price_idr))
+                          : 'Harga belum tersedia'}
                       </strong>
-                      <small>
-                        {marginFor(p.category)}% margin · cargo included
-                      </small>
+                      <small>Termasuk kargo internasional</small>
                     </div>
+                    <p className="commerce-help">
+                      {p.trip_name}
+                      {p.return_date
+                        ? ` · Perkiraan kembali ${new Date(p.return_date + 'T00:00:00').toLocaleDateString('id-ID')}`
+                        : ''}
+                    </p>
+                    <button
+                      className="commerce-primary"
+                      disabled={
+                        !!loadError ||
+                        !v?.unit_price_idr ||
+                        Number(v.unit_price_idr) <= 0 ||
+                        (v.available !== null && v.available < 1)
+                      }
+                      onClick={() => setOrdering({ product: p, variant: v })}
+                    >
+                      {!v?.unit_price_idr
+                        ? 'Menunggu harga'
+                        : (v.available !== null && v.available < 1)
+                          ? 'Kuota habis'
+                          : v.sale_mode === 'stock'
+                            ? 'Pesan sekarang'
+                            : 'Pesan preorder'}
+                    </button>
                   </div>
                 </article>
               );
@@ -301,12 +271,21 @@ export default function Landing() {
             <ShoppingBag />
             <h3>Produknya sedang dikurasi</h3>
             <p>
-              Produk baru akan muncul di sini setelah disetujui tim Elsewhere.
+              Produk tersedia saat trip membuka preorder. Coba kategori lain
+              atau kembali lagi nanti.
             </p>
           </div>
         )}
       </section>
-      <footer>
+      {ordering && (
+        <OrderForm
+          product={ordering.product}
+          variant={ordering.variant}
+          onClose={() => setOrdering(null)}
+          onSaved={load}
+        />
+      )}
+      <footer><a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Kurs oleh ExchangeRate-API</a>
         <div className="store-logo">
           <b>Elsewhere</b>
           <span>& Co.</span>
