@@ -1,4 +1,5 @@
 export type CatalogueVariant = {
+  photo_url?: string | null;
   id: string;
   name: string;
   sale_mode: 'stock' | 'preorder';

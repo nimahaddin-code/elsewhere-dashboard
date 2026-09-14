@@ -25,7 +25,7 @@ npm run build:vercel
 
 ## Activate the database integration
 
-Apply the three migrations in filename order during the same maintenance window as the matching frontend deployment. See [DEPLOY.md](DEPLOY.md) for the handoff, backup requirements and verification. Hosted migrations have not been applied by this change.
+Apply the migrations in filename order during the same maintenance window as the matching frontend deployment. See [DEPLOY.md](DEPLOY.md) for the handoff, backup requirements and verification. Hosted migrations have not been applied by this change.
 
 Existing members retain their access. Only owner/editor roles may mutate commerce records; signup alone does not grant membership. Configure the three public environment variables from `.env.example`, and allow the deployed `/dashboard` URL in Supabase Auth redirect URLs.
 
@@ -35,7 +35,7 @@ The private `order-receipts` bucket limits uploads to 5 MB JPG/PNG/WEBP/PDF. Pro
 
 ## Pricing and inventory rules
 
-- Catalogue and checkout use the same database price function; dashboard calculations mirror it and are tested for parity. Product custom margin overrides the default (20% food/drinks; 25% otherwise). Fashion aliases include `Pakaian`, `Tas`, and `Sepatu`. Currency and both cargo rates come from the product's current trip.
+- Catalogue and checkout use the same database price function, rounding selling prices up to the next Rp1,000; dashboard calculations mirror it and are tested for parity. Product custom margin overrides the default (20% food/drinks; 25% otherwise). Fashion aliases include `Pakaian`, `Tas`, and `Sepatu`. Currency and both cargo rates come from the product's current trip.
 - The customer's submitted price is checked, never trusted. An order stores immutable product names, quantity, unit price, and pricing inputs. Future product/FX edits cannot rewrite that order's price.
 - Active variants from published Ready products in Open PO trips appear publicly. No cost price, margin, customer data or private trip finance is returned by the public catalogue RPC.
 - Unlimited preorder uses a null capacity and never sells out from stock counts. For optionally capped variants, stock/capacity means the total sellable allocation for the trip, **including units already ordered**. All noncancelled orders consume it, including completed orders. Do not enter “remaining stock” as the total allocation. Database row locks prevent simultaneous submissions overselling the allocation.

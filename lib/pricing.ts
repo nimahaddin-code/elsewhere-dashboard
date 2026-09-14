@@ -31,7 +31,7 @@ export function calculatePrice(input: {
   const capital = productCost.add(cargo);
   const sell = capital
     .mul(new Decimal(margin).div(100).add(1))
-    .toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
+    .div(1000).ceil().mul(1000);
   return {
     productCost: productCost.toNumber(),
     cargo: cargo.toNumber(),

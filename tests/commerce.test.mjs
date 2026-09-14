@@ -76,23 +76,11 @@ async function place(id = crypto.randomUUID(), quantity = 1, expected = price) {
     )
   ).rows[0].data;
 }
-await test('public catalogue exposes approved open-trip products and matches custom dashboard pricing', async () => {
+await test('legacy public catalogue exposes only approved open-trip products', async () => {
   await role('anon');
   const c = await catalogue();
   assert.equal(c.length, 1);
   assert.equal(c[0].product_variants[0].unit_price_idr, price);
-  assert.equal(
-    price,
-    calculatePrice({
-      localPrice: 100,
-      grams: 500,
-      category: 'Pakaian',
-      margin: 30,
-      rate: 3500,
-      fashionCargo: 95000,
-      otherCargo: 110000,
-    }).sell,
-  );
   assert.equal('local_price' in c[0].product_variants[0], false);
   assert.equal('margin_percent' in c[0], false);
   await assert.rejects(db.query('select * from products'), /permission denied/);
@@ -313,64 +301,6 @@ await test('stock mode uses stock; unpaid cancellation restores availability and
   await role('anon');
   assert.equal((await catalogue())[0].product_variants[0].available, 1);
 });
-await test('pricing parity across aliases, margins, zero weight and rounding', async () => {
-  await owner();
-  for (const category of [
-    'Fashion',
-    'Pakaian',
-    'Tas',
-    'Makanan & Minuman',
-    'Beauty',
-  ])
-    for (const margin of [null, 0, 25.5]) {
-      const input = {
-        localPrice: 12.37,
-        grams: 333,
-        category,
-        margin,
-        rate: 3521.19,
-        fashionCargo: 95000,
-        otherCargo: 110000,
-      };
-      const result = (
-        await db.query('select commerce_price($1,$2,$3,$4,$5,$6,$7) as price', [
-          input.localPrice,
-          input.grams,
-          category,
-          margin,
-          input.rate,
-          input.fashionCargo,
-          input.otherCargo,
-        ])
-      ).rows[0].price;
-      assert.equal(Number(result), calculatePrice(input).sell);
-    }
-});
-await test('half-rupiah rounding uses decimal arithmetic', async () => {
-  await owner();
-  const input = {
-    localPrice: 1.005,
-    grams: 0,
-    category: 'Pakaian',
-    margin: 0,
-    rate: 100,
-    fashionCargo: 0,
-    otherCargo: 0,
-  };
-  const result = (
-    await db.query('select commerce_price($1,$2,$3,$4,$5,$6,$7) as price', [
-      input.localPrice,
-      input.grams,
-      input.category,
-      input.margin,
-      input.rate,
-      0,
-      0,
-    ])
-  ).rows[0].price;
-  assert.equal(Number(result), 101);
-  assert.equal(calculatePrice(input).sell, 101);
-});
 await test('existing viewers remain read-only despite old broad policies', async () => {
  await role('authenticated', outsider, 'viewer@example.com');
  assert.ok((await db.query('select * from orders')).rows.length > 0);
@@ -454,5 +384,91 @@ await test('hourly infrastructure seeds rates and preserves last good rate on pr
  assert.equal(Number((await db.query("select commerce_current_rate('MYR') as r")).rows[0].r),3500);
  assert.ok((await db.query('select last_error from commerce_exchange_rates')).rows[0].last_error);
  await role('anon'); await assert.rejects(db.query('select commerce_refresh_rates()'),/permission denied/);
+});
+
+await test('rounding/photo migration preserves existing orders and variant links', async () => {
+ await owner();
+ const before=(await db.query('select id,total_idr from orders order by id')).rows;
+ await db.exec("alter table product_variants add column photo_url text; update product_variants set photo_url='https://example.com/blue.jpg';");
+ await db.exec(await readFile(new URL('../supabase/migrations/202609140001_variant_photos_rounding.sql',import.meta.url),'utf8'));
+ assert.deepEqual((await db.query('select id,total_idr from orders order by id')).rows,before);
+ await acceptRate();
+ await db.exec("update product_variants set local_price=100, weight_grams=500; update products set margin_percent=30, published=true,status='Ready';");
+ await role('anon');
+ const v=(await catalogue())[0].product_variants[0];
+ assert.equal(v.photo_url,'https://example.com/blue.jpg');
+ assert.equal(v.unit_price_idr,514000);
+ assert.equal('capital' in v,false); assert.equal('profit' in v,false);
+ await assert.rejects(orderFor('628999900001',crypto.randomUUID(),1,513500),/Harga berubah/);
+ const order=await orderFor('628999900001',crypto.randomUUID(),1,514000);
+ assert.equal(order.total_idr,514000);
+});
+await test('rounding boundaries and profit match the rounded selling price', async()=>{
+ await owner();
+ for(const [localPrice, expected] of [[0,0],[1000,1000],[1000.01,2000],[999.99,1000],[123400,124000]]) {
+  const input={localPrice,grams:0,category:'Fashion',margin:0,rate:1,fashionCargo:0,otherCargo:0};
+  const calc=calculatePrice(input);
+  const dbPrice=(await db.query("select commerce_price($1,0,'Fashion',0,1,0,0) as p",[localPrice])).rows[0].p;
+  assert.equal(Number(dbPrice),expected);assert.equal(calc.sell,expected);
+  assert.ok(Math.abs(calc.profit-(expected-localPrice))<0.00001);
+ }
+});
+await test('pricing parity across aliases, margins, zero weight and rounding', async () => {
+  await owner();
+  for (const category of [
+    'Fashion',
+    'Pakaian',
+    'Tas',
+    'Makanan & Minuman',
+    'Beauty',
+  ])
+    for (const margin of [null, 0, 25.5]) {
+      const input = {
+        localPrice: 12.37,
+        grams: 333,
+        category,
+        margin,
+        rate: 3521.19,
+        fashionCargo: 95000,
+        otherCargo: 110000,
+      };
+      const result = (
+        await db.query('select commerce_price($1,$2,$3,$4,$5,$6,$7) as price', [
+          input.localPrice,
+          input.grams,
+          category,
+          margin,
+          input.rate,
+          input.fashionCargo,
+          input.otherCargo,
+        ])
+      ).rows[0].price;
+      assert.equal(Number(result), calculatePrice(input).sell);
+    }
+});
+await test('fractional rupiah always rounds up to the next thousand', async () => {
+  await owner();
+  const input = {
+    localPrice: 1.005,
+    grams: 0,
+    category: 'Pakaian',
+    margin: 0,
+    rate: 100,
+    fashionCargo: 0,
+    otherCargo: 0,
+  };
+  const result = (
+    await db.query('select commerce_price($1,$2,$3,$4,$5,$6,$7) as price', [
+      input.localPrice,
+      input.grams,
+      input.category,
+      input.margin,
+      input.rate,
+      0,
+      0,
+    ])
+  ).rows[0].price;
+  assert.equal(Number(result), 1000);
+  assert.equal(calculatePrice(input).sell, 1000);
 });
 await db.close();

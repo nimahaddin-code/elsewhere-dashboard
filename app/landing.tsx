@@ -8,6 +8,7 @@ import type {
 } from '../lib/commerce';
 import { rupiah } from '../lib/pricing';
 import OrderForm from '../components/order-form';
+import ProductPhoto from '../components/product-photo';
 
 export default function Landing() {
   const [items, setItems] = useState<PublicProduct[]>([]);
@@ -207,14 +208,8 @@ export default function Landing() {
               return (
                 <article className="product-card" key={p.id}>
                   <div className="product-photo">
-                    {p.photo_url ? (
-                      <img src={p.photo_url} alt={p.name} />
-                    ) : (
-                      <div>
-                        <ShoppingBag />
-                        <span>Photo coming soon</span>
-                      </div>
-                    )}
+                    <ProductPhoto key={`${p.id}-${v?.id || 'default'}`} product={p} variant={v} alt={`${p.name}${v ? ` — ${v.name}` : ''}`}/>
+
                   </div>
                   <div className="product-copy">
                     <span>{p.brand || 'Elsewhere find'}</span>

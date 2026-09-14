@@ -55,3 +55,23 @@ Buka `/` tanpa login, pesan varian preorder stok nol, pastikan pesanan muncul di
 Pembatasan pesanan: 3/nomor/15 menit, 10/nomor/24 jam, 60 total/menit. Pesanan baru tanpa catatan pembayaran dibatalkan setelah 48 jam pada jadwal per jam. Ini bukan CAPTCHA. Pembayaran dan resi masih manual, ongkir domestik dikonfirmasi terpisah.
 
 Untuk rollback, hentikan checkout, simpan semua pesanan/pembayaran baru dan rekonsiliasi sebelum memulihkan schema/policies dari backup. Jangan drop tabel transaksi. Frontend lama saja tidak cocok dengan policies baru. Admin dapat menonaktifkan job melalui `cron.unschedule('elsewhere-hourly-rates')` dan `cron.unschedule('elsewhere-expire-unpaid')`; kurs otomatis tidak akan refresh dan checkout berhenti setelah kurs terlalu lama.
+
+
+## Update 14 September: pencarian, foto varian, pembulatan, profit
+
+Frontend baru menambahkan pencarian/filter katalog dashboard, foto per varian, estimasi profit, dan pembulatan harga jual ke atas ke kelipatan Rp1.000. Contoh Rp123.400 menjadi Rp124.000; harga yang sudah pas Rp124.000 tetap. Modal tetap harga barang × kurs + kargo. Profit per unit adalah harga jual setelah pembulatan dikurangi modal tersebut, belum termasuk biaya operasional, pembayaran dan ongkir domestik.
+
+Untuk database yang sudah memakai seluruh migrasi commerce sebelumnya, jalankan `supabase/migrations/202609140001_variant_photos_rounding.sql` bersamaan dengan frontend ini. Periksa dulu migrasi sebelumnya sudah terpasang; jangan menjalankan bootstrap project kosong pada database existing. Migrasi hanya menambahkan `product_variants.photo_url` bila belum ada serta memperbarui fungsi harga/katalog. Existing URL dan snapshot pesanan tidak ditimpa. Pesanan baru memakai harga bulat dari server; pelanggan yang masih melihat harga lama perlu refresh katalog.
+
+Import link foto Excel ke `product_variants.photo_url` dengan mencocokkan ID varian atau SKU yang unik dalam produk, bukan nama produk saja. Jangan overwrite foto existing dengan sel Excel kosong. Pastikan link adalah URL gambar http/https langsung yang bisa diakses publik. Jika importer versi deployed memakai nama kolom lain, petakan kolom itu terlebih dahulu. Link website saja tidak cukup untuk mengetahui isi Excel atau mengisi foto yang belum tersimpan.
+
+Cek sesudah update: pilih dua varian dengan foto berbeda di katalog publik, pastikan foto dan harga ikut berubah; link kosong/rusak kembali ke foto produk. Cek harga dan profit satu varian terhadap modalnya dan pastikan invoice/order lama tetap sama. Informasi modal/profit tidak ditambahkan ke RPC katalog publik.
+
+
+### Foto spreadsheet yang sudah dicocokkan ke data live
+
+Pada 14 September, katalog publik live berisi 31 produk/61 varian; data ini sudah berbeda dari commit main meskipun frontend masih sama. Setelah migrasi fitur foto di atas, jalankan `supabase/data/20260914_catalogue_variant_photos.sql` untuk mengisi 15 foto Tudungruffle (7 shawl, 8 square). Semua 15 URL merespons sebagai gambar saat diperiksa. Script memeriksa ID produk, ID varian, nama, dan SKU; seluruh transaksi dibatalkan jika tujuan tidak cocok. Foto yang sudah terisi tetap dipertahankan, dan pengulangan tidak membuat duplikat. Script diuji memakai salinan metadata varian live dalam database lokal.
+
+Sumber: https://docs.google.com/spreadsheets/d/1j-KXMU8ddKaRckwlmuYUfr4AWbjoL940OKC4VNfONSs/edit
+
+Tujuh Blackmores cocok secara data tetapi URL foto Watsons menolak pemeriksaan dengan HTTP 403, sehingga tidak disertakan dalam import otomatis. Ini belum membuktikan link selalu gagal di browser pengguna. Enam halaman Padini yang tercantum mengembalikan HTTP 404; 18 varian Padini memerlukan link foto per style yang benar. Jangan memasukkan URL halaman HTML ke photo_url. Kelompok lain di spreadsheet belum terlihat dalam respons katalog publik; jangan membuat produk/varian duplikat berdasarkan ketidakhadiran di respons publik.
