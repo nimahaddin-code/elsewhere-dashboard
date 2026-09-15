@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, Download, ImageIcon, LoaderCircle, Sparkles, Upload } from "lucide-react";
+import { zipSync } from "fflate";
 import QRCode from "qrcode";
 
 type GeneratorProduct = {
@@ -23,6 +24,7 @@ type Theme = { background: string; panel: string; accent: string; ink: string; l
 type ImageChoice = { id: string; label: string; url: string; variant: GeneratorVariant; local?: boolean };
 
 const SIZE = { width: 1080, height: 1350 };
+const EXPORT_SCALE = 2;
 const themes: Record<"fashion" | "food" | "health", Theme> = {
   fashion: { background: "#f5d0d2", panel: "#e8b9bc", accent: "#8b6650", ink: "#201b1b", label: "FASHION" },
   food: { background: "#f8e7a5", panel: "#f2d66f", accent: "#9b6828", ink: "#332413", label: "FOOD & DRINK" },
@@ -151,9 +153,12 @@ async function saveSlides(productId: string, slides: Slide[]) {
 
 function baseCanvas(theme: Theme) {
   const canvas = document.createElement("canvas");
-  canvas.width = SIZE.width;
-  canvas.height = SIZE.height;
+  canvas.width = SIZE.width * EXPORT_SCALE;
+  canvas.height = SIZE.height * EXPORT_SCALE;
   const ctx = canvas.getContext("2d")!;
+  ctx.scale(EXPORT_SCALE, EXPORT_SCALE);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.fillStyle = theme.background;
   ctx.fillRect(0, 0, SIZE.width, SIZE.height);
   return { canvas, ctx };
@@ -164,6 +169,24 @@ function download(url: string, filename: string) {
   a.href = url;
   a.download = filename;
   a.click();
+}
+
+function safeFilename(value: string) {
+  return value.trim().replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "") || "elsewhere-catalogue";
+}
+
+async function downloadSlidesZip(slides: Slide[], product: GeneratorProduct) {
+  const baseName = safeFilename(`${product.brand}-${product.name}`);
+  const entries: Record<string, Uint8Array> = {};
+  await Promise.all(slides.map(async (slide) => {
+    const bytes = new Uint8Array(await (await fetch(slide.url)).arrayBuffer());
+    entries[`${baseName}-${slide.name}.png`] = bytes;
+  }));
+  const zip = zipSync(entries, { level: 6 });
+  const zipBuffer = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;
+  const url = URL.createObjectURL(new Blob([zipBuffer], { type: "application/zip" }));
+  download(url, `${baseName}-slides.zip`);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function copyPng(url: string) {
@@ -254,7 +277,7 @@ export default function CatalogueImageGenerator({
       first.ctx.stroke();
       first.ctx.fillStyle = theme.ink;
       first.ctx.textAlign = "center";
-      const title = `${product.brand} ${product.name}`.toUpperCase();
+      const title = product.name.toUpperCase();
       const titleSize = 46;
       first.ctx.font = `500 ${titleSize}px Georgia, serif`;
       const titleLines = wrapTwoLines(first.ctx, title, 860);
@@ -352,7 +375,7 @@ export default function CatalogueImageGenerator({
           ? "Pilihan produk wellness untuk melengkapi kebutuhan harianmu."
           : "Nyaman, versatile, dan gampang dipadukan untuk daily outfit.";
       const availability = singleProduct ? "Produk tersedia sesuai pilihan yang tertera." : "Tersedia dalam beberapa pilihan model dan varian.";
-      const nextCaption = `${product.brand} ${product.name} is here 🎀\n\n${intro}\n\n${singleProduct ? "Harga" : "Harga mulai"} Rp${displayPrice.toLocaleString("id-ID")}\nSudah termasuk jasa titip dan estimasi cargo ${tripCountry}–Indonesia.\n\n${availability} Lihat katalog melalui link in bio atau chat WhatsApp untuk order 💌\n\ngood things, found elsewhere.`;
+      const nextCaption = `${product.name} is here 🎀\n\n${intro}\n\n${singleProduct ? "Harga" : "Harga mulai"} Rp${displayPrice.toLocaleString("id-ID")}\nSudah termasuk jasa titip dan estimasi cargo ${tripCountry}–Indonesia.\n\n${availability} Lihat katalog melalui link in bio atau chat WhatsApp untuk order 💌\n\ngood things, found elsewhere.`;
       setCaption(nextCaption);
       localStorage.setItem(`elsewhere-caption-${product.id}`, nextCaption);
       const slideCount = nextSlides.length;
@@ -382,11 +405,21 @@ export default function CatalogueImageGenerator({
     }
   };
 
+  const downloadAll = async () => {
+    try {
+      setMessage("Menyiapkan ZIP gambar HD…");
+      await downloadSlidesZip(slides, product);
+      setMessage(`${slides.length} gambar HD sudah dijadikan satu file ZIP.`);
+    } catch {
+      setMessage("ZIP gagal dibuat. Coba generate ulang lalu download lagi.");
+    }
+  };
+
   return (
     <section className="catalogue-generator panel" style={{ "--generator-bg": theme.background, "--generator-accent": theme.accent } as React.CSSProperties}>
       <header className="generator-heading">
         <div><span>SMART CATALOGUE STUDIO</span><h2>Generate 3 slide katalog</h2><p>Pilih foto yang mau ditampilkan. Warna, nama, varian, harga, dan QR disusun otomatis.</p></div>
-        <div className="hd-badge"><Sparkles size={16}/> HD 1080 × 1350</div>
+        <div className="hd-badge"><Sparkles size={16}/> Ultra HD 2160 × 2700</div>
       </header>
 
       {choices.length ? <>
@@ -416,7 +449,7 @@ export default function CatalogueImageGenerator({
           <strong>{slide.name.includes("cover") ? "Cover & harga" : slide.name.includes("collection") ? "Pilihan produk" : "QR katalog"}</strong>
           <div><button type="button" onClick={() => copySlide(slide)}><Copy size={14}/> Copy</button><button type="button" onClick={() => download(slide.url, `${product.brand}-${product.name}-${slide.name}.png`)}><Download size={14}/> PNG</button></div>
         </article>)}
-        <button type="button" className="download-all" onClick={() => slides.forEach((slide, i) => setTimeout(() => download(slide.url, `${product.brand}-${product.name}-${slide.name}.png`), i * 250))}><Download size={16}/> Download semua {slides.length} slide</button>
+        <button type="button" className="download-all" onClick={downloadAll}><Download size={16}/> Download ZIP ({slides.length} slide)</button>
       </div>}
       {slides.length > 0 && caption && <section className="generated-caption">
         <div><span>CAPTION SIAP POST</span><h3>Copywriting otomatis</h3><p>Harga dan informasi mengikuti foto yang terakhir kamu generate.</p></div>
