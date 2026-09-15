@@ -134,6 +134,24 @@ function removeEdgeBackground(img: HTMLImageElement) {
   return canvas;
 }
 
+async function removeBackgroundAi(url: string, onProgress: (percent: number) => void) {
+  const { removeBackground: imglyRemoveBackground } = await import("@imgly/background-removal");
+  const response = await fetch(proxiedUrl(url));
+  if (!response.ok) throw new Error("Foto tidak dapat dimuat untuk cutout");
+  const result = await imglyRemoveBackground(await response.blob(), {
+    device: "cpu",
+    model: "isnet_quint8",
+    output: { format: "image/png", quality: 1 },
+    progress: (_key: string, current: number, total: number) => total && onProgress(Math.min(100, Math.round((current / total) * 100))),
+  });
+  const objectUrl = URL.createObjectURL(result);
+  try {
+    return await loadImageOnce(objectUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, radius);
@@ -248,7 +266,15 @@ export default function CatalogueImageGenerator({
       first.ctx.fillStyle = theme.panel;
       roundedRect(first.ctx, 72, 132, 936, 850, 420);
       first.ctx.fill();
-      const hero = removeBackground ? removeEdgeBackground(loaded[0].image) : loaded[0].image;
+      let hero: HTMLImageElement | HTMLCanvasElement = loaded[0].image;
+      if (removeBackground) {
+        setMessage("Menghapus background foto depan dengan AI… pertama kali mungkin sedikit lebih lama.");
+        try {
+          hero = await removeBackgroundAi(loaded[0].url, percent => setMessage(`Menyiapkan mesin cutout AI… ${percent}%`));
+        } catch {
+          hero = removeEdgeBackground(loaded[0].image);
+        }
+      }
       const heroWidth = hero instanceof HTMLCanvasElement ? hero.width : hero.naturalWidth;
       const heroHeight = hero instanceof HTMLCanvasElement ? hero.height : hero.naturalHeight;
       containImage(first.ctx, hero, heroWidth, heroHeight, 115, 175, 850, 745);
