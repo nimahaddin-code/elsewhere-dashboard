@@ -282,7 +282,7 @@ export default function CatalogueImageGenerator({
         const col = i % 2;
         const row = Math.floor(i / 2);
         const x = 112 + col * 470;
-        const y = 275 + row * 430;
+        const y = 305 + row * 430;
         second.ctx.fillStyle = "#fffdfb";
         roundedRect(second.ctx, x, y, 386, 385, 18);
         second.ctx.fill();
