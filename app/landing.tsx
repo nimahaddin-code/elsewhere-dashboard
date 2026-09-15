@@ -21,7 +21,7 @@ export default function Landing() {
   const [category, setCategory] = useState('Semua');
   const [brand, setBrand] = useState('Semua');
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Record<string, { option1?: string; option2?: string }>>({});
   const load = async () => {
     try {
       const { data, error } = await supabase.rpc('commerce_catalogue');
@@ -203,8 +203,21 @@ export default function Landing() {
           <div className="product-grid">
             {shown.map((p) => {
               const variants = p.product_variants || [];
-              const v =
-                variants.find((x) => x.id === selected[p.id]) || variants[0];
+              const option1Values = [...new Set(variants.map((x) => x.option1_value).filter(Boolean))] as string[];
+              const option2Values = [...new Set(variants.filter(x => !selected[p.id]?.option1 || x.option1_value === selected[p.id]?.option1).map((x) => x.option2_value).filter(Boolean))] as string[];
+              const selection = selected[p.id];
+              const v = variants.find((x) =>
+                (!selection?.option1 || x.option1_value === selection.option1) &&
+                (!selection?.option2 || x.option2_value === selection.option2),
+              ) || variants[0];
+              const setOption = (key: 'option1' | 'option2', value: string) => {
+                const next = { ...selection, [key]: value };
+                if (key === 'option1') {
+                  const nextOption2 = variants.find(x => x.option1_value === value)?.option2_value || undefined;
+                  next.option2 = nextOption2;
+                }
+                setSelected((current) => ({ ...current, [p.id]: next }));
+              };
               return (
                 <article className="product-card" key={p.id}>
                   <div className="product-photo">
@@ -214,11 +227,16 @@ export default function Landing() {
                   <div className="product-copy">
                     <span>{p.brand || 'Elsewhere find'}</span>
                     <h3>{p.name}</h3>
-                    {variants.length > 0 && (
+                    {option1Values.length > 0 ? (
+                      <div className="product-options">
+                        <label>{p.option1_label || 'Pilihan 1'}<select value={selection?.option1 || option1Values[0]} onChange={e => setOption('option1', e.target.value)}>{option1Values.map(value => <option key={value}>{value}</option>)}</select></label>
+                        {option2Values.length > 0 && <label>{p.option2_label || 'Pilihan 2'}<select value={selection?.option2 || option2Values[0]} onChange={e => setOption('option2', e.target.value)}>{option2Values.map(value => <option key={value}>{value}</option>)}</select></label>}
+                      </div>
+                    ) : variants.length > 0 && (
                       <select
                         value={v?.id || ''}
                         onChange={(e) =>
-                          setSelected((x) => ({ ...x, [p.id]: e.target.value }))
+                          setSelected((x) => ({ ...x, [p.id]: { option1: variants.find(variant => variant.id === e.target.value)?.option1_value || undefined, option2: variants.find(variant => variant.id === e.target.value)?.option2_value || undefined } }))
                         }
                       >
                         {variants.map((x) => (

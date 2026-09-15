@@ -63,6 +63,8 @@ Frontend baru menambahkan pencarian/filter katalog dashboard, foto per varian, e
 
 Untuk database yang sudah memakai seluruh migrasi commerce sebelumnya, jalankan `supabase/migrations/202609140001_variant_photos_rounding.sql` bersamaan dengan frontend ini. Periksa dulu migrasi sebelumnya sudah terpasang; jangan menjalankan bootstrap project kosong pada database existing. Migrasi hanya menambahkan `product_variants.photo_url` bila belum ada serta memperbarui fungsi harga/katalog. Existing URL dan snapshot pesanan tidak ditimpa. Pesanan baru memakai harga bulat dari server; pelanggan yang masih melihat harga lama perlu refresh katalog.
 
+Untuk editor varian dua pilihan dan upload foto varian, jalankan `supabase/migrations/202609150001_variant_options.sql` setelah migrasi di atas. Migrasi ini menambahkan label pilihan pada produk dan nilai pilihan pada varian, lalu memperbarui RPC katalog publik. Snapshot order lama tidak berubah.
+
 Import link foto Excel ke `product_variants.photo_url` dengan mencocokkan ID varian atau SKU yang unik dalam produk, bukan nama produk saja. Jangan overwrite foto existing dengan sel Excel kosong. Pastikan link adalah URL gambar http/https langsung yang bisa diakses publik. Jika importer versi deployed memakai nama kolom lain, petakan kolom itu terlebih dahulu. Link website saja tidak cukup untuk mengetahui isi Excel atau mengisi foto yang belum tersimpan.
 
 Cek sesudah update: pilih dua varian dengan foto berbeda di katalog publik, pastikan foto dan harga ikut berubah; link kosong/rusak kembali ke foto produk. Cek harga dan profit satu varian terhadap modalnya dan pastikan invoice/order lama tetap sama. Informasi modal/profit tidak ditambahkan ke RPC katalog publik.

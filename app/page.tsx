@@ -80,6 +80,8 @@ type Product = {
   local_price: number;
   price_thb: number;
   weight_grams: number;
+  option1_label?: string | null;
+  option2_label?: string | null;
   margin_percent: number | null;
   photo_url: string;
   notes: string;
@@ -90,7 +92,7 @@ type Product = {
   fashion_cargo_per_kg:number;
   nonfashion_cargo_per_kg:number;
 };
-type Variant={photo_url?:string|null;id:string;product_id:string;name:string;sku:string;local_price:number;weight_grams:number;stock:number;active:boolean;sale_mode:"stock"|"preorder";preorder_capacity:number|null};
+type Variant={photo_url?:string|null;option1_value?:string|null;option2_value?:string|null;id:string;product_id:string;name:string;sku:string;local_price:number;weight_grams:number;stock:number;active:boolean;sale_mode:"stock"|"preorder";preorder_capacity:number|null};
 type ProductCategory={id:string;name:string;default_margin_percent:number;active:boolean};
 type Trip = {
   code: string;
@@ -231,6 +233,30 @@ function Dashboard() {
   const [view, setView] = useState<"dashboard" | "trip" | "catalogue" | "product" | "orders">(
     "dashboard",
   );
+  const scrollPositions = useRef<Record<string, number>>({
+    dashboard: 0,
+    trip: 0,
+    catalogue: 0,
+    orders: 0,
+  });
+  const switchView = (
+    next: "dashboard" | "trip" | "catalogue" | "orders",
+  ) => {
+    if (view !== "product") {
+      scrollPositions.current[view] = window.scrollY;
+    }
+
+    setView(next);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({
+          top: scrollPositions.current[next] ?? 0,
+          behavior: "auto",
+        });
+      });
+    });
+  };
   const [trips, setTrips] = useState<Trip[]>([]);
   const [activeTripCode, setActiveTripCode] = useState("TRIP-001");
   const [tripModal, setTripModal] = useState(false);
@@ -256,7 +282,7 @@ function Dashboard() {
   const [productModal, setProductModal] = useState(false);
   const[variants,setVariants]=useState<Variant[]>([]);
   const[variantProduct,setVariantProduct]=useState<Product|null>(null);
-  const[variantDraft,setVariantDraft]=useState({name:'',sku:'',local_price:0,weight_grams:0,stock:0,active:true,sale_mode:'preorder' as const,preorder_capacity:null as number|null});
+  const[variantDraft,setVariantDraft]=useState({name:'',sku:'',option1_value:'',option2_value:'',local_price:0,weight_grams:0,stock:0,active:true,sale_mode:'preorder' as const,preorder_capacity:null as number|null});
   const [productDraft, setProductDraft] = useState({
     name: "",
     brand: "",
@@ -707,24 +733,36 @@ function Dashboard() {
       window.open(product.photo_url,"_blank","noopener,noreferrer");
     }
   };
+  const uploadVariantPhoto=async(variant:Variant,file:File)=>{if(!variantProduct)return;setSyncStatus('Mengunggah foto varian…');const ext=file.name.split('.').pop()?.toLowerCase()||'jpg';const path=`${variantProduct.trip_code}/${variantProduct.id}/variants/${variant.id}-${Date.now()}.${ext}`;const{error}=await supabase.storage.from('product-images').upload(path,file,{upsert:false});if(error){setSyncStatus('Gagal mengunggah foto varian');return}const{data}=supabase.storage.from('product-images').getPublicUrl(path);await saveVariant(variant.id,'photo_url',data.publicUrl);updateVariant(variant.id,'photo_url',data.publicUrl);setSyncStatus('Foto varian tersimpan')};
   const togglePublish=async(product:Product)=>{setSyncStatus(product.published?'Menarik produk dari landing page…':'Menyetujui produk…');const next=!product.published;if(next && !(rate>0)){setSyncStatus("Tunggu kurs otomatis sebelum publikasi");return;}const{error}=await supabase.from('products').update({published:next,approved_at:next?new Date().toISOString():null,approved_by:next?user?.id:null,currency_code:currency,currency_symbol:currencySymbol,fashion_cargo_per_kg:cargoRate,nonfashion_cargo_per_kg:otherCargoRate,status:next?'Ready':product.status}).eq('id',product.id);setSyncStatus(error?'Gagal mengubah publikasi':next?'Produk tayang di landing page':'Produk disembunyikan');if(!error){setCatalogue(rows=>rows.map(x=>x.id===product.id?{...x,published:next,status:next?'Ready':x.status}:x));setVariantProduct(x=>x?.id===product.id?{...x,published:next,status:next?'Ready':x.status}:x)}};
   const openVariants=async(product:Product)=>{setVariantProduct(product);const{data}=await supabase.from('product_variants').select('*').eq('product_id',product.id).order('created_at');setVariants((data||[]) as Variant[])};
   const openProductEditor=async(product:Product)=>{
+    scrollPositions.current.catalogue = window.scrollY;
     catalogueReturn.current = { id: product.id, y: window.scrollY };
     await openVariants(product);
     setView("product");
     window.history.pushState({},"",`/dashboard/products/${product.id}`);
-    window.scrollTo({top:0,behavior:"smooth"});
+    window.scrollTo({top:0,behavior:"auto"});
   };
   const closeProductEditor=()=>{
     setVariantProduct(null);
     setView("catalogue");
     window.history.pushState({},"","/dashboard");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({
+          top: scrollPositions.current.catalogue ?? 0,
+          behavior: "auto",
+        });
+      });
+    });
     restoreCataloguePosition();
   };
-  const addVariant=async()=>{if(!variantProduct||!user||!variantDraft.name.trim())return;const{error}=await supabase.from('product_variants').insert({...variantDraft,product_id:variantProduct.id,created_by:user.id});if(!error){setVariantDraft({name:'',sku:'',local_price:0,weight_grams:0,stock:0,active:true,sale_mode:'preorder' as const,preorder_capacity:null as number|null});await openVariants(variantProduct)}};
+  const variantDisplayName=(variant:Pick<Variant,'name'|'option1_value'|'option2_value'>) => [variant.option1_value,variant.option2_value].filter(Boolean).join(' / ') || variant.name;
+  const addVariant=async()=>{if(!variantProduct||!user||!variantDraft.name.trim())return;const{error}=await supabase.from('product_variants').insert({...variantDraft,name:variantDisplayName(variantDraft),product_id:variantProduct.id,created_by:user.id});if(!error){setVariantDraft({name:'',sku:'',option1_value:'',option2_value:'',local_price:0,weight_grams:0,stock:0,active:true,sale_mode:'preorder' as const,preorder_capacity:null as number|null});await openVariants(variantProduct)}};
   const saveVariant=async(id:string,key:keyof Variant,value:string|number|boolean|null)=>{const {error}=await supabase.from('product_variants').update({[key]:value,updated_at:new Date().toISOString()}).eq('id',id);setSyncStatus(error ? "Varian gagal disimpan" : "Varian tersimpan"); if(error && variantProduct) await openVariants(variantProduct);};
-  const updateVariant=(id:string,key:keyof Variant,value:string|number|boolean|null)=>setVariants(rows=>rows.map(x=>x.id===id?{...x,[key]:value}:x));
+  const updateVariant=(id:string,key:keyof Variant,value:string|number|boolean|null)=>setVariants(rows=>rows.map(x=>x.id===id?{...x,[key]:value,...((key==='option1_value'||key==='option2_value')?{name:variantDisplayName({...x,[key]:value})}: {})}:x));
+  const saveVariantOption=(variant:Variant,key:'option1_value'|'option2_value',value:string)=>{const next={...variant,[key]:value};updateVariant(variant.id,key,value);saveVariant(variant.id,key,value);saveVariant(variant.id,'name',variantDisplayName(next));};
   const deleteVariant=async(id:string)=>{await supabase.from('product_variants').delete().eq('id',id);if(variantProduct)await openVariants(variantProduct)};
   const addCategory=async()=>{
     const name=categoryDraft.trim();
@@ -781,7 +819,7 @@ function Dashboard() {
   };
   const selectTrip = (code: string) => {
     setActiveTripCode(code);
-    setView("trip");
+    switchView("trip");
     setNav(false);
   };
   const changeCountry = async (country: string) => {
@@ -846,7 +884,7 @@ function Dashboard() {
     }
     setTripModal(false);
     setActiveTripCode(code);
-    setView("trip");
+    switchView("trip");
   };
   useEffect(() => {
     setTargetFund(plannedCapital);
@@ -972,9 +1010,9 @@ function Dashboard() {
           <a
             className={view === "dashboard" ? "active" : ""}
             onClick={() => {
-              setView("dashboard");
+              switchView("dashboard");
               setVariantProduct(null);
-              window.history.pushState({},"","/dashboard");
+              window.history.pushState({}, "", "/dashboard");
               setNav(false);
             }}
           >
@@ -985,15 +1023,15 @@ function Dashboard() {
             <Users />
             Leads & waitlist <em>48</em>
           </a>
-          <a href="/dashboard" className={view === "orders" ? "active" : ""} onClick={e => { e.preventDefault(); setView("orders"); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); }}>
+          <a href="/dashboard" className={view === "orders" ? "active" : ""} onClick={e => { e.preventDefault(); switchView("orders"); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); }}>
             <ShoppingBag /> Orders <em>{currentOrders.length}</em>
           </a>
           <a
             className={view === "catalogue" || view === "product" ? "active" : ""}
             onClick={() => {
-              setView("catalogue");
+              switchView("catalogue");
               setVariantProduct(null);
-              window.history.pushState({},"","/dashboard");
+              window.history.pushState({}, "", "/dashboard");
               setNav(false);
             }}
           >
@@ -1004,9 +1042,9 @@ function Dashboard() {
           <a
             className={view === "trip" ? "active" : ""}
             onClick={() => {
-              setView("trip");
+              switchView("trip");
               setVariantProduct(null);
-              window.history.pushState({},"","/dashboard");
+              window.history.pushState({}, "", "/dashboard");
               setNav(false);
             }}
           >
@@ -1046,7 +1084,7 @@ function Dashboard() {
           </div>
           <button
             onClick={() => {
-              setView("trip");
+              switchView("trip");
               setNav(false);
             }}
           >
@@ -1091,7 +1129,7 @@ function Dashboard() {
             </button>
           </div>
         </header>
-        <div className="commerce-trip-bar"><label>Trip aktif <select value={activeTripCode} onChange={e => { setActiveTripCode(e.target.value); setVariantProduct(null); if(view === "product") setView("catalogue"); }}>{trips.map(t => <option key={t.code} value={t.code}>{t.name} · {t.code}</option>)}</select></label><a href="/" target="_blank" rel="noreferrer">Lihat katalog ↗</a><output>{syncStatus}</output></div>
+        <div className="commerce-trip-bar"><label>Trip aktif <select value={activeTripCode} onChange={e => { setActiveTripCode(e.target.value); setVariantProduct(null); if(view === "product") switchView("catalogue"); }}>{trips.map(t => <option key={t.code} value={t.code}>{t.name} · {t.code}</option>)}</select></label><a href="/" target="_blank" rel="noreferrer">Lihat katalog ↗</a><output>{syncStatus}</output></div>
         {commerceError && <p role="alert" className="commerce-error">{commerceError}</p>}
         {view === "orders" ? <OrdersPanel key={activeTripCode} tripCode={activeTripCode} onChange={() => setCommerceRevision(n => n + 1)}/> : view === "trip" ? (
           <section className="trip-workspace">
@@ -1182,9 +1220,24 @@ function Dashboard() {
                   />
                 </label>
                 <div className="trip-sync">
-                  <div className="trip-status">
-                    <i /> {activeTrip?.status || "Planning"}
-                  </div>
+                  <label className="trip-status-control">
+                    Status trip
+                    <select
+                      value={activeTrip?.status || "Planning"}
+                      onChange={(e) =>
+                        saveTripField(
+                          "status",
+                          e.target.value as Trip["status"],
+                        )
+                      }
+                    >
+                      <option value="Planning">Planning</option>
+                      <option value="Open PO">Open PO</option>
+                      <option value="On trip">On trip</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Archived">Archived</option>
+                    </select>
+                  </label>
                   <small>{syncStatus}</small>
                 </div>
               </div>
@@ -1528,13 +1581,30 @@ function Dashboard() {
                   <p className="modal-help">Profit = harga jual setelah pembulatan − modal barang − kargo. Belum dikurangi biaya operasional, ongkir domestik, dan biaya pembayaran.</p>
                 </article>
                 <article className="panel editor-section">
-                  <div className="editor-section-title"><div><span>VARIAN PRODUK</span><h2>Ukuran, berat & harga</h2></div><small>Setiap varian dihitung terpisah</small></div>
+                  <div className="editor-section-title"><div><span>VARIAN PRODUK</span><h2>Pilihan, foto & harga</h2></div><small>Semua detail tiap kombinasi ada dalam satu baris</small></div>
                   <p className="modal-help">Isi harga dan berat setiap varian. Stok/kuota adalah jumlah total untuk trip ini, termasuk yang sudah dipesan. Preorder tanpa batas tidak memerlukan stok. Isi kuota hanya jika ingin membatasi pesanan.</p>
-                  {variants.map(v => <div className="variant-availability" key={v.id}><strong>{v.name}</strong><label>Penjualan<select value={v.sale_mode} onChange={e => { updateVariant(v.id,"sale_mode",e.target.value); saveVariant(v.id,"sale_mode",e.target.value); }}><option value="preorder">Preorder</option><option value="stock">Ready stock</option></select></label><label>Kuota total PO<input type="number" min={0} step={1} value={v.preorder_capacity ?? ""} placeholder="Tanpa batas" onChange={e => updateVariant(v.id,"preorder_capacity",(e.target.value === "" ? null : Number(e.target.value)))} onBlur={e => saveVariant(v.id,"preorder_capacity",e.target.value === "" ? null : Number(e.target.value))}/></label><label><input type="checkbox" checked={v.active} onChange={e => { updateVariant(v.id,"active",e.target.checked); saveVariant(v.id,"active",e.target.checked); }}/> Aktif</label></div>)}
-                  <div className="variant-photo-list">{variants.map(v=><div className="variant-photo-row" key={v.id}><div className="variant-photo-preview"><ProductPhoto key={`${v.id}-${v.photo_url}`} variant={v} product={variantProduct} alt={`${variantProduct.name} — ${v.name}`}/></div><label>Foto · {v.name}<input type="url" aria-label={`Link foto ${v.name}`} value={v.photo_url || ''} placeholder="https://… (kosong = foto produk)" onChange={e=>updateVariant(v.id,'photo_url',e.target.value)} onBlur={e=>{const url=e.target.value.trim();if(url&&!/^https?:\/\//i.test(url)){setSyncStatus('Gunakan link foto http atau https');return;}saveVariant(v.id,'photo_url',url)}}/><small>Link foto varian dari Excel dapat disimpan di sini. Foto ini mengikuti pilihan varian di katalog.</small></label></div>)}</div>
-                  <div className="variant-table-head"><span>Nama varian</span><span>Harga {currency}</span><span>Berat</span><span>Stok</span><span>Harga jual</span><span/></div>
-                  <div className="variant-list">{variants.map(v=>{const calc=productPricing({local_price:v.local_price,price_thb:v.local_price,weight_grams:v.weight_grams,category:variantProduct.category,margin_percent:variantProduct.margin_percent});return <div className="variant-row" key={v.id}><input value={v.name} onChange={e=>updateVariant(v.id,'name',e.target.value)} onBlur={e=>saveVariant(v.id,'name',e.target.value)} placeholder="Nama/ukuran"/><input type="number" value={v.local_price||''} onChange={e=>updateVariant(v.id,'local_price',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'local_price',Number(e.target.value))} placeholder={currency}/><input type="number" value={v.weight_grams||''} onChange={e=>updateVariant(v.id,'weight_grams',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'weight_grams',Number(e.target.value))} placeholder="gram"/><input type="number" value={v.stock||''} onChange={e=>updateVariant(v.id,'stock',Number(e.target.value))} onBlur={e=>saveVariant(v.id,'stock',Number(e.target.value))} placeholder="stok"/><div className="variant-profit"><strong>Jual {format(calc.sell)}</strong><small>Modal {format(calc.capital)}</small><small>Profit {format(calc.profit)} / unit</small></div><button className="delete-expense" onClick={()=>deleteVariant(v.id)}><Trash2 size={15}/></button></div>})}</div>
-                  <div className="variant-add"><input value={variantDraft.name} onChange={e=>setVariantDraft(x=>({...x,name:e.target.value}))} placeholder="Contoh: Size M"/><input type="number" value={variantDraft.local_price||''} onChange={e=>setVariantDraft(x=>({...x,local_price:Number(e.target.value)}))} placeholder={`Harga ${currency}`}/><input type="number" value={variantDraft.weight_grams||''} onChange={e=>setVariantDraft(x=>({...x,weight_grams:Number(e.target.value)}))} placeholder="Berat gram"/><input type="number" value={variantDraft.stock||''} onChange={e=>setVariantDraft(x=>({...x,stock:Number(e.target.value)}))} placeholder="Stok"/><button onClick={addVariant}><Plus size={14}/> Tambah varian</button></div>
+                  <div className="variant-option-settings">
+                    <label>Pilihan 1 (contoh: Model)<input value={variantProduct.option1_label || ""} placeholder="Model" onChange={e=>updateEditorProduct(variantProduct.id,"option1_label",e.target.value)} onBlur={e=>saveProduct(variantProduct.id,"option1_label",e.target.value.trim() || null)}/></label>
+                    <label>Pilihan 2 (contoh: Ukuran)<input value={variantProduct.option2_label || ""} placeholder="Ukuran" onChange={e=>updateEditorProduct(variantProduct.id,"option2_label",e.target.value)} onBlur={e=>saveProduct(variantProduct.id,"option2_label",e.target.value.trim() || null)}/></label>
+                  </div>
+                  <div className="variant-editor-list">
+                    {variants.map(v => <div className="variant-editor-row" key={v.id}>
+                      <div className="variant-photo-preview"><ProductPhoto key={`${v.id}-${v.photo_url}`} variant={v} product={variantProduct} alt={`${variantProduct.name} — ${variantDisplayName(v)}`}/></div>
+                      <div className="variant-editor-fields">
+                        <label>{variantProduct.option1_label || "Pilihan 1"}<input value={v.option1_value || ""} placeholder="Contoh: Sweater" onChange={e=>updateVariant(v.id,"option1_value",e.target.value)} onBlur={e=>saveVariantOption(v,"option1_value",e.target.value.trim())}/></label>
+                        <label>{variantProduct.option2_label || "Pilihan 2"}<input value={v.option2_value || ""} placeholder="Contoh: Garret" onChange={e=>updateVariant(v.id,"option2_value",e.target.value)} onBlur={e=>saveVariantOption(v,"option2_value",e.target.value.trim())}/></label>
+                        <label>SKU<input value={v.sku || ""} onChange={e=>updateVariant(v.id,"sku",e.target.value)} onBlur={e=>saveVariant(v.id,"sku",e.target.value.trim())}/></label>
+                        <label>Foto varian<input type="url" aria-label={`Link foto ${variantDisplayName(v)}`} value={v.photo_url || ''} placeholder="https://… (opsional)" onChange={e=>updateVariant(v.id,'photo_url',e.target.value)} onBlur={e=>{const url=e.target.value.trim();if(url&&!/^https?:\/\//i.test(url)){setSyncStatus('Gunakan link foto http atau https');return;}saveVariant(v.id,'photo_url',url)}}/><input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`Upload foto ${variantDisplayName(v)}`} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadVariantPhoto(v,file)}}/><small>Upload file atau tempel link. Kosong memakai foto produk.</small></label>
+                        <label>Harga {currency}<input type="number" value={v.local_price || ""} onChange={e=>updateVariant(v.id,"local_price",Number(e.target.value))} onBlur={e=>saveVariant(v.id,"local_price",Number(e.target.value))}/></label>
+                        <label>Berat (gram)<input type="number" value={v.weight_grams || ""} onChange={e=>updateVariant(v.id,"weight_grams",Number(e.target.value))} onBlur={e=>saveVariant(v.id,"weight_grams",Number(e.target.value))}/></label>
+                        <label>Penjualan<select value={v.sale_mode} onChange={e=>{updateVariant(v.id,"sale_mode",e.target.value);saveVariant(v.id,"sale_mode",e.target.value)}}><option value="preorder">Preorder</option><option value="stock">Ready stock</option></select></label>
+                        <label>Kuota total PO<input type="number" min={0} step={1} value={v.preorder_capacity ?? ""} placeholder="Tanpa batas" onChange={e=>updateVariant(v.id,"preorder_capacity",e.target.value === "" ? null : Number(e.target.value))} onBlur={e=>saveVariant(v.id,"preorder_capacity",e.target.value === "" ? null : Number(e.target.value))}/></label>
+                        <label className="variant-active"><input type="checkbox" checked={v.active} onChange={e=>{updateVariant(v.id,"active",e.target.checked);saveVariant(v.id,"active",e.target.checked)}}/> Aktif</label>
+                        <button className="delete-expense" onClick={()=>deleteVariant(v.id)} aria-label={`Hapus varian ${variantDisplayName(v)}`}><Trash2 size={15}/></button>
+                      </div>
+                    </div>)}
+                  </div>
+                  <div className="variant-add"><input value={variantDraft.option1_value} onChange={e=>setVariantDraft(x=>({...x,option1_value:e.target.value,name:e.target.value}))} placeholder={variantProduct.option1_label || "Pilihan 1"}/><input value={variantDraft.option2_value} onChange={e=>setVariantDraft(x=>({...x,option2_value:e.target.value,name:e.target.value}))} placeholder={variantProduct.option2_label || "Pilihan 2"}/><input value={variantDraft.sku} onChange={e=>setVariantDraft(x=>({...x,sku:e.target.value}))} placeholder="SKU"/><input type="number" value={variantDraft.local_price||''} onChange={e=>setVariantDraft(x=>({...x,local_price:Number(e.target.value)}))} placeholder={`Harga ${currency}`}/><input type="number" value={variantDraft.weight_grams||''} onChange={e=>setVariantDraft(x=>({...x,weight_grams:Number(e.target.value)}))} placeholder="Berat gram"/><button onClick={addVariant}><Plus size={14}/> Tambah kombinasi</button></div>
                 </article>
                 <CatalogueImageGenerator
                   product={variantProduct}

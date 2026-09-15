@@ -1,5 +1,7 @@
 export type CatalogueVariant = {
   photo_url?: string | null;
+  option1_value?: string | null;
+  option2_value?: string | null;
   id: string;
   name: string;
   sale_mode: 'stock' | 'preorder';
@@ -12,6 +14,8 @@ export type CatalogueProduct = {
   brand: string;
   category: string;
   photo_url: string;
+  option1_label?: string | null;
+  option2_label?: string | null;
   trip_code: string;
   trip_name: string;
   country: string;
