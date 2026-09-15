@@ -273,16 +273,16 @@ export default function CatalogueImageGenerator({
       second.ctx.fillStyle = theme.ink;
       second.ctx.textAlign = "center";
       second.ctx.font = "400 26px Arial, sans-serif";
-      second.ctx.fillText("ELSEWHERE & CO", SIZE.width / 2, 72);
+      second.ctx.fillText("ELSEWHERE & CO", SIZE.width / 2, 102);
       second.ctx.font = "500 72px Georgia, serif";
-      second.ctx.fillText("NEW COLLECTION", SIZE.width / 2, 158);
+      second.ctx.fillText("NEW COLLECTION", SIZE.width / 2, 188);
       const gridItems = loaded.slice(0, 4);
       for (let i = 0; i < gridItems.length; i++) {
         const item = gridItems[i];
         const col = i % 2;
         const row = Math.floor(i / 2);
         const x = 112 + col * 470;
-        const y = 305 + row * 430;
+        const y = 275 + row * 430;
         second.ctx.fillStyle = "#fffdfb";
         roundedRect(second.ctx, x, y, 386, 385, 18);
         second.ctx.fill();
