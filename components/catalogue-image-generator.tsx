@@ -75,83 +75,6 @@ function coverImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: num
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
-function containImage(ctx: CanvasRenderingContext2D, source: CanvasImageSource, sourceW: number, sourceH: number, x: number, y: number, w: number, h: number) {
-  const scale = Math.min(w / sourceW, h / sourceH);
-  const dw = sourceW * scale;
-  const dh = sourceH * scale;
-  ctx.drawImage(source, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-}
-
-// Removes only background pixels connected to the image edges. This keeps white
-// details inside clothing/packaging intact while producing a real transparent PNG.
-function removeEdgeBackground(img: HTMLImageElement) {
-  const maxSide = 1000;
-  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-  const width = Math.max(1, Math.round(img.naturalWidth * scale));
-  const height = Math.max(1, Math.round(img.naturalHeight * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0, width, height);
-  const frame = ctx.getImageData(0, 0, width, height);
-  const data = frame.data;
-  const corners = [0, width - 1, (height - 1) * width, height * width - 1];
-  const bg = corners.reduce((rgb, pixel) => {
-    const i = pixel * 4;
-    rgb[0] += data[i]; rgb[1] += data[i + 1]; rgb[2] += data[i + 2];
-    return rgb;
-  }, [0, 0, 0]).map(value => value / 4);
-  const tolerance = 54;
-  const matches = (pixel: number) => {
-    const i = pixel * 4;
-    const distance = Math.hypot(data[i] - bg[0], data[i + 1] - bg[1], data[i + 2] - bg[2]);
-    const max = Math.max(data[i], data[i + 1], data[i + 2]);
-    const min = Math.min(data[i], data[i + 1], data[i + 2]);
-    return data[i + 3] === 0 || distance < tolerance || (max > 238 && max - min < 18);
-  };
-  const visited = new Uint8Array(width * height);
-  const queue = new Int32Array(width * height);
-  let head = 0;
-  let tail = 0;
-  const add = (pixel: number) => {
-    if (pixel < 0 || pixel >= visited.length || visited[pixel] || !matches(pixel)) return;
-    visited[pixel] = 1;
-    queue[tail++] = pixel;
-  };
-  for (let x = 0; x < width; x++) { add(x); add((height - 1) * width + x); }
-  for (let y = 0; y < height; y++) { add(y * width); add(y * width + width - 1); }
-  while (head < tail) {
-    const pixel = queue[head++];
-    const x = pixel % width;
-    data[pixel * 4 + 3] = 0;
-    if (x > 0) add(pixel - 1);
-    if (x < width - 1) add(pixel + 1);
-    if (pixel >= width) add(pixel - width);
-    if (pixel < width * (height - 1)) add(pixel + width);
-  }
-  ctx.putImageData(frame, 0, 0);
-  return canvas;
-}
-
-async function removeBackgroundAi(url: string, onProgress: (percent: number) => void) {
-  const { removeBackground: imglyRemoveBackground } = await import("@imgly/background-removal");
-  const response = await fetch(proxiedUrl(url));
-  if (!response.ok) throw new Error("Foto tidak dapat dimuat untuk cutout");
-  const result = await imglyRemoveBackground(await response.blob(), {
-    device: "cpu",
-    model: "isnet_quint8",
-    output: { format: "image/png", quality: 1 },
-    progress: (_key: string, current: number, total: number) => total && onProgress(Math.min(100, Math.round((current / total) * 100))),
-  });
-  const objectUrl = URL.createObjectURL(result);
-  try {
-    return await loadImageOnce(objectUrl);
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
 function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, radius);
@@ -170,12 +93,53 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, 
 function drawBrand(ctx: CanvasRenderingContext2D, theme: Theme) {
   ctx.fillStyle = theme.ink;
   ctx.textAlign = "center";
-  ctx.font = "500 58px Georgia, serif";
-  ctx.fillText("Eᶜ", SIZE.width / 2, 62);
+  ctx.font = "500 66px Georgia, serif";
+  ctx.fillText("E", SIZE.width / 2 - 17, 69);
+  ctx.font = "500 61px Georgia, serif";
+  ctx.fillText("C", SIZE.width / 2 + 17, 85);
   ctx.font = "500 12px Arial, sans-serif";
   ctx.letterSpacing = "5px";
-  ctx.fillText("ELSEWHERE & CO.", SIZE.width / 2, 92);
+  ctx.fillText("ELSEWHERE & CO.", SIZE.width / 2, 111);
   ctx.letterSpacing = "0px";
+}
+
+function wordsThatFit(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.trim().split(/\s+/);
+  let result = "";
+  for (const word of words) {
+    const candidate = result ? `${result} ${word}` : word;
+    if (ctx.measureText(candidate).width > maxWidth) break;
+    result = candidate;
+  }
+  return result || words[0] || "";
+}
+
+const slideDbName = "elsewhere-catalogue-studio";
+function slideStore(mode: IDBTransactionMode) {
+  return new Promise<IDBObjectStore>((resolve, reject) => {
+    const request = indexedDB.open(slideDbName, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("slides");
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result.transaction("slides", mode).objectStore("slides"));
+  });
+}
+
+async function loadSavedSlides(productId: string) {
+  const store = await slideStore("readonly");
+  return new Promise<Slide[]>((resolve) => {
+    const request = store.get(productId);
+    request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+    request.onerror = () => resolve([]);
+  });
+}
+
+async function saveSlides(productId: string, slides: Slide[]) {
+  const store = await slideStore("readwrite");
+  await new Promise<void>((resolve, reject) => {
+    const request = store.put(slides, productId);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
 }
 
 function baseCanvas(theme: Theme) {
@@ -221,12 +185,14 @@ export default function CatalogueImageGenerator({
   const [slides, setSlides] = useState<Slide[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [removeBackground, setRemoveBackground] = useState(true);
   const theme = themeFor(product.category);
 
   useEffect(() => {
     setSelected(choices.slice(0, 8).map((choice) => choice.id));
-    setSlides([]);
+    void loadSavedSlides(product.id).then(saved => {
+      setSlides(saved);
+      if (saved.length) setMessage("Hasil generate terakhir dipulihkan otomatis.");
+    });
   }, [product.id, variantChoices.length]);
 
   const chosen = choices.filter((choice) => selected.includes(choice.id));
@@ -264,20 +230,17 @@ export default function CatalogueImageGenerator({
       const first = baseCanvas(theme);
       drawBrand(first.ctx, theme);
       first.ctx.fillStyle = theme.panel;
-      roundedRect(first.ctx, 72, 132, 936, 850, 420);
+      roundedRect(first.ctx, 72, 145, 936, 820, 250);
       first.ctx.fill();
-      let hero: HTMLImageElement | HTMLCanvasElement = loaded[0].image;
-      if (removeBackground) {
-        setMessage("Menghapus background foto depan dengan AI… pertama kali mungkin sedikit lebih lama.");
-        try {
-          hero = await removeBackgroundAi(loaded[0].url, percent => setMessage(`Menyiapkan mesin cutout AI… ${percent}%`));
-        } catch {
-          hero = removeEdgeBackground(loaded[0].image);
-        }
-      }
-      const heroWidth = hero instanceof HTMLCanvasElement ? hero.width : hero.naturalWidth;
-      const heroHeight = hero instanceof HTMLCanvasElement ? hero.height : hero.naturalHeight;
-      containImage(first.ctx, hero, heroWidth, heroHeight, 115, 175, 850, 745);
+      first.ctx.save();
+      roundedRect(first.ctx, 105, 175, 870, 755, 190);
+      first.ctx.clip();
+      coverImage(first.ctx, loaded[0].image, 105, 175, 870, 755);
+      first.ctx.restore();
+      first.ctx.strokeStyle = `${theme.accent}88`;
+      first.ctx.lineWidth = 3;
+      roundedRect(first.ctx, 105, 175, 870, 755, 190);
+      first.ctx.stroke();
       first.ctx.fillStyle = theme.ink;
       first.ctx.textAlign = "center";
       const title = `${product.brand} ${product.name}`.toUpperCase();
@@ -309,7 +272,7 @@ export default function CatalogueImageGenerator({
         const col = i % 2;
         const row = Math.floor(i / 2);
         const x = 112 + col * 470;
-        const y = 215 + row * 430;
+        const y = 275 + row * 430;
         second.ctx.fillStyle = "#fffdfb";
         roundedRect(second.ctx, x, y, 386, 385, 18);
         second.ctx.fill();
@@ -322,18 +285,18 @@ export default function CatalogueImageGenerator({
         second.ctx.textAlign = "left";
         second.ctx.font = "500 17px Arial, sans-serif";
         const label = `${product.name} — ${item.variant.name}`.toUpperCase();
-        second.ctx.fillText(label.length > 38 ? `${label.slice(0, 36)}…` : label, x + 18, y + 323);
+        second.ctx.fillText(wordsThatFit(second.ctx, label, 350), x + 18, y + 323);
         second.ctx.fillStyle = theme.accent;
         second.ctx.font = "700 23px Arial, sans-serif";
         second.ctx.fillText(`RP${sellingPrice(item.variant).toLocaleString("id-ID")}`, x + 18, y + 356);
       }
       second.ctx.fillStyle = theme.accent;
-      roundedRect(second.ctx, 280, 1130, 520, 72, 36);
+      roundedRect(second.ctx, 280, 1190, 520, 72, 36);
       second.ctx.fill();
       second.ctx.fillStyle = "white";
       second.ctx.textAlign = "center";
       second.ctx.font = "500 25px Arial, sans-serif";
-      second.ctx.fillText("REQUEST? SEND BY WHATSAPP", SIZE.width / 2, 1176);
+      second.ctx.fillText("REQUEST? SEND BY WHATSAPP", SIZE.width / 2, 1236);
 
       const third = baseCanvas(theme);
       drawBrand(third.ctx, theme);
@@ -356,11 +319,13 @@ export default function CatalogueImageGenerator({
       third.ctx.letterSpacing = "8px";
       third.ctx.fillText("OR CLICK LINK IN BIO", SIZE.width / 2, 1165);
 
-      setSlides([
+      const nextSlides = [
         { name: "01-cover", url: first.canvas.toDataURL("image/png", 1) },
         { name: "02-collection", url: second.canvas.toDataURL("image/png", 1) },
         { name: "03-qr", url: third.canvas.toDataURL("image/png", 1) },
-      ]);
+      ];
+      setSlides(nextSlides);
+      await saveSlides(product.id, nextSlides);
       setMessage(failedCount ? `3 slide HD berhasil dibuat. ${failedCount} foto bermasalah dilewati otomatis.` : "3 slide HD berhasil dibuat (1080 × 1350 px).");
     } catch {
       setMessage("Ada foto yang tidak bisa diproses. Coba ganti foto atau upload ulang ke dashboard.");
@@ -388,7 +353,6 @@ export default function CatalogueImageGenerator({
       {choices.length ? <>
         <div className="generator-tools">
           <label className="upload-generator-photo"><Upload size={17}/> Tambah foto dari perangkat<input type="file" accept="image/*" multiple onChange={event => { addUploads(event.target.files); event.currentTarget.value = ""; }}/></label>
-          <label className="remove-background-option"><input type="checkbox" checked={removeBackground} onChange={event => setRemoveBackground(event.target.checked)}/><span><Check size={14}/></span> Hapus background foto depan otomatis</label>
         </div>
         <div className="generator-image-picker">
           {choices.map(({ id, label, url, local }) => {
