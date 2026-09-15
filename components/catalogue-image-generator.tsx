@@ -80,14 +80,21 @@ function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
   ctx.roundRect(x, y, w, h, radius);
 }
 
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, start: number, min = 28) {
-  let size = start;
-  while (size > min) {
-    ctx.font = `500 ${size}px Georgia, serif`;
-    if (ctx.measureText(text).width <= maxWidth) break;
-    size -= 2;
+function wrapTwoLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.trim().split(/\s+/);
+  const lines = [""];
+  for (const word of words) {
+    const current = lines[lines.length - 1];
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      lines[lines.length - 1] = candidate;
+    } else if (lines.length === 1) {
+      lines.push(word);
+    } else {
+      break;
+    }
   }
-  return size;
+  return lines.filter(Boolean);
 }
 
 function drawBrand(ctx: CanvasRenderingContext2D, theme: Theme) {
@@ -244,12 +251,14 @@ export default function CatalogueImageGenerator({
       first.ctx.fillStyle = theme.ink;
       first.ctx.textAlign = "center";
       const title = `${product.brand} ${product.name}`.toUpperCase();
-      const titleSize = fitText(first.ctx, title, 890, 72, 38);
+      const titleSize = 46;
       first.ctx.font = `500 ${titleSize}px Georgia, serif`;
-      first.ctx.fillText(title, SIZE.width / 2, 1075);
+      const titleLines = wrapTwoLines(first.ctx, title, 860);
+      const titleY = titleLines.length > 1 ? 1028 : 1062;
+      titleLines.forEach((line, index) => first.ctx.fillText(line, SIZE.width / 2, titleY + index * (titleSize + 8)));
       first.ctx.font = "500 24px Arial, sans-serif";
       first.ctx.letterSpacing = "8px";
-      first.ctx.fillText(theme.label, SIZE.width / 2, 1128);
+      first.ctx.fillText(theme.label, SIZE.width / 2, 1148);
       first.ctx.letterSpacing = "0px";
       first.ctx.strokeStyle = theme.accent;
       first.ctx.lineWidth = 2;
@@ -257,7 +266,8 @@ export default function CatalogueImageGenerator({
       first.ctx.stroke();
       first.ctx.font = "500 25px Arial, sans-serif";
       first.ctx.letterSpacing = "6px";
-      first.ctx.fillText(`START FROM  ${shortPrice(roundedStart(minPrice))}`, SIZE.width / 2, 1227);
+      const singleProduct = loaded.length === 1;
+      first.ctx.fillText(singleProduct ? `PRICE  RP${sellingPrice(loaded[0].variant).toLocaleString("id-ID")}` : `START FROM  ${shortPrice(roundedStart(minPrice))}`, SIZE.width / 2, 1227);
 
       const second = baseCanvas(theme);
       second.ctx.fillStyle = theme.ink;
@@ -308,7 +318,7 @@ export default function CatalogueImageGenerator({
       third.ctx.letterSpacing = "7px";
       third.ctx.fillText("TO FIND ALL ITEMS", SIZE.width / 2, 292);
       third.ctx.letterSpacing = "0px";
-      const catalogueUrl = `${window.location.origin}/?product=${product.id}`;
+      const catalogueUrl = `${window.location.origin}/`;
       const qrUrl = await QRCode.toDataURL(catalogueUrl, { width: 660, margin: 2, errorCorrectionLevel: "H", color: { dark: "#000000", light: "#ffffff" } });
       const qr = await loadImage(qrUrl);
       third.ctx.fillStyle = "white";
@@ -319,14 +329,18 @@ export default function CatalogueImageGenerator({
       third.ctx.letterSpacing = "8px";
       third.ctx.fillText("OR CLICK LINK IN BIO", SIZE.width / 2, 1165);
 
-      const nextSlides = [
+      const nextSlides = singleProduct ? [
+        { name: "01-cover", url: first.canvas.toDataURL("image/png", 1) },
+        { name: "02-qr", url: third.canvas.toDataURL("image/png", 1) },
+      ] : [
         { name: "01-cover", url: first.canvas.toDataURL("image/png", 1) },
         { name: "02-collection", url: second.canvas.toDataURL("image/png", 1) },
         { name: "03-qr", url: third.canvas.toDataURL("image/png", 1) },
       ];
       setSlides(nextSlides);
       await saveSlides(product.id, nextSlides);
-      setMessage(failedCount ? `3 slide HD berhasil dibuat. ${failedCount} foto bermasalah dilewati otomatis.` : "3 slide HD berhasil dibuat (1080 × 1350 px).");
+      const slideCount = nextSlides.length;
+      setMessage(failedCount ? `${slideCount} slide HD berhasil dibuat. ${failedCount} foto bermasalah dilewati otomatis.` : `${slideCount} slide HD berhasil dibuat (1080 × 1350 px).`);
     } catch {
       setMessage("Ada foto yang tidak bisa diproses. Coba ganti foto atau upload ulang ke dashboard.");
     } finally {
@@ -374,10 +388,10 @@ export default function CatalogueImageGenerator({
       {slides.length > 0 && <div className="generated-slides">
         {slides.map((slide, index) => <article key={slide.name}>
           <div className="slide-preview"><img src={slide.url} alt={`Preview slide ${index + 1}`}/><b>{index + 1}</b></div>
-          <strong>{index === 0 ? "Cover & start from" : index === 1 ? "Pilihan produk" : "QR katalog"}</strong>
+          <strong>{slide.name.includes("cover") ? "Cover & harga" : slide.name.includes("collection") ? "Pilihan produk" : "QR katalog"}</strong>
           <div><button type="button" onClick={() => copySlide(slide)}><Copy size={14}/> Copy</button><button type="button" onClick={() => download(slide.url, `${product.brand}-${product.name}-${slide.name}.png`)}><Download size={14}/> PNG</button></div>
         </article>)}
-        <button type="button" className="download-all" onClick={() => slides.forEach((slide, i) => setTimeout(() => download(slide.url, `${product.brand}-${product.name}-${slide.name}.png`), i * 250))}><Download size={16}/> Download semua 3 slide</button>
+        <button type="button" className="download-all" onClick={() => slides.forEach((slide, i) => setTimeout(() => download(slide.url, `${product.brand}-${product.name}-${slide.name}.png`), i * 250))}><Download size={16}/> Download semua {slides.length} slide</button>
       </div>}
     </section>
   );
