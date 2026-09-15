@@ -175,10 +175,12 @@ export default function CatalogueImageGenerator({
   product,
   variants,
   sellingPrice,
+  tripCountry = "Malaysia",
 }: {
   product: GeneratorProduct;
   variants: GeneratorVariant[];
   sellingPrice: (variant: GeneratorVariant) => number;
+  tripCountry?: string;
 }) {
   const variantChoices = useMemo<ImageChoice[]>(() => {
     const seen = new Set<string>();
@@ -190,6 +192,7 @@ export default function CatalogueImageGenerator({
   const choices = useMemo(() => [...variantChoices, ...uploads], [variantChoices, uploads]);
   const [selected, setSelected] = useState<string[]>([]);
   const [slides, setSlides] = useState<Slide[]>([]);
+  const [caption, setCaption] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const theme = themeFor(product.category);
@@ -200,6 +203,7 @@ export default function CatalogueImageGenerator({
       setSlides(saved);
       if (saved.length) setMessage("Hasil generate terakhir dipulihkan otomatis.");
     });
+    setCaption(localStorage.getItem(`elsewhere-caption-${product.id}`) || "");
   }, [product.id, variantChoices.length]);
 
   const chosen = choices.filter((choice) => selected.includes(choice.id));
@@ -339,6 +343,18 @@ export default function CatalogueImageGenerator({
       ];
       setSlides(nextSlides);
       await saveSlides(product.id, nextSlides);
+      const displayPrice = singleProduct ? sellingPrice(loaded[0].variant) : roundedStart(minPrice);
+      const isFood = /makanan|minuman|snack|food|drink/i.test(product.category);
+      const isHealth = /obat|kesehatan|suplemen|vitamin|health|medicine/i.test(product.category);
+      const intro = isFood
+        ? "Pilihan camilan dan minuman yang cocok untuk stok di rumah atau jadi oleh-oleh."
+        : isHealth
+          ? "Pilihan produk wellness untuk melengkapi kebutuhan harianmu."
+          : "Nyaman, versatile, dan gampang dipadukan untuk daily outfit.";
+      const availability = singleProduct ? "Produk tersedia sesuai pilihan yang tertera." : "Tersedia dalam beberapa pilihan model dan varian.";
+      const nextCaption = `${product.brand} ${product.name} is here 🎀\n\n${intro}\n\n${singleProduct ? "Harga" : "Harga mulai"} Rp${displayPrice.toLocaleString("id-ID")}\nSudah termasuk jasa titip dan estimasi cargo ${tripCountry}–Indonesia.\n\n${availability} Lihat katalog melalui link in bio atau chat WhatsApp untuk order 💌\n\ngood things, found elsewhere.`;
+      setCaption(nextCaption);
+      localStorage.setItem(`elsewhere-caption-${product.id}`, nextCaption);
       const slideCount = nextSlides.length;
       setMessage(failedCount ? `${slideCount} slide HD berhasil dibuat. ${failedCount} foto bermasalah dilewati otomatis.` : `${slideCount} slide HD berhasil dibuat (1080 × 1350 px).`);
     } catch {
@@ -354,6 +370,15 @@ export default function CatalogueImageGenerator({
       setMessage(`${slide.name} sudah dicopy—langsung paste ke Canva.`);
     } catch {
       setMessage("Browser belum mengizinkan copy gambar. Gunakan tombol Download PNG.");
+    }
+  };
+
+  const copyCaption = async () => {
+    try {
+      await navigator.clipboard.writeText(caption);
+      setMessage("Caption sudah dicopy—langsung paste ke Instagram.");
+    } catch {
+      setMessage("Browser belum mengizinkan copy. Blok teks caption lalu copy manual.");
     }
   };
 
@@ -393,6 +418,11 @@ export default function CatalogueImageGenerator({
         </article>)}
         <button type="button" className="download-all" onClick={() => slides.forEach((slide, i) => setTimeout(() => download(slide.url, `${product.brand}-${product.name}-${slide.name}.png`), i * 250))}><Download size={16}/> Download semua {slides.length} slide</button>
       </div>}
+      {slides.length > 0 && caption && <section className="generated-caption">
+        <div><span>CAPTION SIAP POST</span><h3>Copywriting otomatis</h3><p>Harga dan informasi mengikuti foto yang terakhir kamu generate.</p></div>
+        <textarea readOnly value={caption} aria-label="Caption siap post"/>
+        <button type="button" onClick={copyCaption}><Copy size={15}/> Copy caption</button>
+      </section>}
     </section>
   );
 }

@@ -1539,6 +1539,7 @@ function Dashboard() {
                 <CatalogueImageGenerator
                   product={variantProduct}
                   variants={variants}
+                  tripCountry={activeTrip?.country}
                   sellingPrice={(variant)=>productPricing({local_price:variant.local_price,price_thb:variant.local_price,weight_grams:variant.weight_grams,category:variantProduct.category,margin_percent:variantProduct.margin_percent}).sell}
                 />
                 <div className="editor-danger-zone"><button onClick={async()=>{await deleteProduct(variantProduct.id);closeProductEditor()}}><Trash2 size={14}/> Hapus produk</button></div>
