@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Download, ImageIcon, LoaderCircle, Sparkles } from "lucide-react";
+import { Check, Copy, Download, ImageIcon, LoaderCircle, Sparkles, Upload } from "lucide-react";
 import QRCode from "qrcode";
 
 type GeneratorProduct = {
@@ -20,6 +20,7 @@ type GeneratorVariant = {
 
 type Slide = { name: string; url: string };
 type Theme = { background: string; panel: string; accent: string; ink: string; label: string };
+type ImageChoice = { id: string; label: string; url: string; variant: GeneratorVariant; local?: boolean };
 
 const SIZE = { width: 1080, height: 1350 };
 const themes: Record<"fashion" | "food" | "health", Theme> = {
@@ -42,7 +43,12 @@ function shortPrice(price: number) {
   return `${Math.round(price / 1000)}K`;
 }
 
-function loadImage(url: string) {
+function proxiedUrl(url: string) {
+  if (/^(data:|blob:)/i.test(url) || url.startsWith(window.location.origin)) return url;
+  return `/api/image?url=${encodeURIComponent(url)}`;
+}
+
+function loadImageOnce(url: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -52,6 +58,14 @@ function loadImage(url: string) {
   });
 }
 
+async function loadImage(url: string) {
+  try {
+    return await loadImageOnce(proxiedUrl(url));
+  } catch {
+    return loadImageOnce(url);
+  }
+}
+
 function coverImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
   const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
   const sw = w / scale;
@@ -59,6 +73,65 @@ function coverImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: num
   const sx = (img.naturalWidth - sw) / 2;
   const sy = (img.naturalHeight - sh) / 2;
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+function containImage(ctx: CanvasRenderingContext2D, source: CanvasImageSource, sourceW: number, sourceH: number, x: number, y: number, w: number, h: number) {
+  const scale = Math.min(w / sourceW, h / sourceH);
+  const dw = sourceW * scale;
+  const dh = sourceH * scale;
+  ctx.drawImage(source, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+// Removes only background pixels connected to the image edges. This keeps white
+// details inside clothing/packaging intact while producing a real transparent PNG.
+function removeEdgeBackground(img: HTMLImageElement) {
+  const maxSide = 1000;
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const width = Math.max(1, Math.round(img.naturalWidth * scale));
+  const height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0, width, height);
+  const frame = ctx.getImageData(0, 0, width, height);
+  const data = frame.data;
+  const corners = [0, width - 1, (height - 1) * width, height * width - 1];
+  const bg = corners.reduce((rgb, pixel) => {
+    const i = pixel * 4;
+    rgb[0] += data[i]; rgb[1] += data[i + 1]; rgb[2] += data[i + 2];
+    return rgb;
+  }, [0, 0, 0]).map(value => value / 4);
+  const tolerance = 54;
+  const matches = (pixel: number) => {
+    const i = pixel * 4;
+    const distance = Math.hypot(data[i] - bg[0], data[i + 1] - bg[1], data[i + 2] - bg[2]);
+    const max = Math.max(data[i], data[i + 1], data[i + 2]);
+    const min = Math.min(data[i], data[i + 1], data[i + 2]);
+    return data[i + 3] === 0 || distance < tolerance || (max > 238 && max - min < 18);
+  };
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  const add = (pixel: number) => {
+    if (pixel < 0 || pixel >= visited.length || visited[pixel] || !matches(pixel)) return;
+    visited[pixel] = 1;
+    queue[tail++] = pixel;
+  };
+  for (let x = 0; x < width; x++) { add(x); add((height - 1) * width + x); }
+  for (let y = 0; y < height; y++) { add(y * width); add(y * width + width - 1); }
+  while (head < tail) {
+    const pixel = queue[head++];
+    const x = pixel % width;
+    data[pixel * 4 + 3] = 0;
+    if (x > 0) add(pixel - 1);
+    if (x < width - 1) add(pixel + 1);
+    if (pixel >= width) add(pixel - width);
+    if (pixel < width * (height - 1)) add(pixel + width);
+  }
+  ctx.putImageData(frame, 0, 0);
+  return canvas;
 }
 
 function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number) {
@@ -118,24 +191,43 @@ export default function CatalogueImageGenerator({
   variants: GeneratorVariant[];
   sellingPrice: (variant: GeneratorVariant) => number;
 }) {
-  const choices = useMemo(() => {
+  const variantChoices = useMemo<ImageChoice[]>(() => {
     const seen = new Set<string>();
     return variants
-      .map((variant) => ({ variant, url: variant.photo_url || product.photo_url || "" }))
+      .map((variant) => ({ id: variant.id, label: variant.name, variant, url: variant.photo_url || product.photo_url || "" }))
       .filter((item) => item.url && !seen.has(item.url) && seen.add(item.url));
   }, [product.photo_url, variants]);
+  const [uploads, setUploads] = useState<ImageChoice[]>([]);
+  const choices = useMemo(() => [...variantChoices, ...uploads], [variantChoices, uploads]);
   const [selected, setSelected] = useState<string[]>([]);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [removeBackground, setRemoveBackground] = useState(true);
   const theme = themeFor(product.category);
 
   useEffect(() => {
-    setSelected(choices.slice(0, 8).map((choice) => choice.variant.id));
+    setSelected(choices.slice(0, 8).map((choice) => choice.id));
     setSlides([]);
-  }, [product.id, choices.length]);
+  }, [product.id, variantChoices.length]);
 
-  const chosen = choices.filter((choice) => selected.includes(choice.variant.id));
+  const chosen = choices.filter((choice) => selected.includes(choice.id));
+
+  const addUploads = (files: FileList | null) => {
+    if (!files?.length || !variants[0]) return;
+    const incoming = Array.from(files).filter(file => file.type.startsWith("image/")).slice(0, Math.max(0, 8 - uploads.length));
+    const next = incoming.map((file, index) => ({
+      id: `upload-${Date.now()}-${index}`,
+      label: file.name.replace(/\.[^.]+$/, ""),
+      url: URL.createObjectURL(file),
+      variant: variants[0],
+      local: true,
+    }));
+    setUploads(current => [...current, ...next]);
+    setSelected(current => [...current, ...next.map(item => item.id)].slice(0, 8));
+    setSlides([]);
+    setMessage(`${next.length} foto berhasil ditambahkan.`);
+  };
 
   const generate = async () => {
     if (!chosen.length) {
@@ -145,7 +237,10 @@ export default function CatalogueImageGenerator({
     setBusy(true);
     setMessage("Menyiapkan gambar HD…");
     try {
-      const loaded = await Promise.all(chosen.map(async (choice) => ({ ...choice, image: await loadImage(choice.url) })));
+      const attempts = await Promise.allSettled(chosen.map(async (choice) => ({ ...choice, image: await loadImage(choice.url) })));
+      const loaded = attempts.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+      const failedCount = attempts.length - loaded.length;
+      if (!loaded.length) throw new Error("Semua foto gagal dimuat");
       const minPrice = Math.min(...loaded.map((item) => sellingPrice(item.variant)));
 
       const first = baseCanvas(theme);
@@ -153,21 +248,10 @@ export default function CatalogueImageGenerator({
       first.ctx.fillStyle = theme.panel;
       roundedRect(first.ctx, 72, 132, 936, 850, 420);
       first.ctx.fill();
-      const coverSlots = loaded.length === 1 ? [{ x: 150, y: 205, w: 780, h: 700 }] : loaded.slice(0, 8).map((_, i, arr) => {
-        const cols = arr.length <= 4 ? 2 : 4;
-        const rows = Math.ceil(arr.length / cols);
-        const gap = 18;
-        const w = (820 - gap * (cols - 1)) / cols;
-        const h = (710 - gap * (rows - 1)) / rows;
-        return { x: 130 + (i % cols) * (w + gap), y: 200 + Math.floor(i / cols) * (h + gap), w, h };
-      });
-      coverSlots.forEach((slot, index) => {
-        first.ctx.save();
-        roundedRect(first.ctx, slot.x, slot.y, slot.w, slot.h, 26);
-        first.ctx.clip();
-        coverImage(first.ctx, loaded[index % loaded.length].image, slot.x, slot.y, slot.w, slot.h);
-        first.ctx.restore();
-      });
+      const hero = removeBackground ? removeEdgeBackground(loaded[0].image) : loaded[0].image;
+      const heroWidth = hero instanceof HTMLCanvasElement ? hero.width : hero.naturalWidth;
+      const heroHeight = hero instanceof HTMLCanvasElement ? hero.height : hero.naturalHeight;
+      containImage(first.ctx, hero, heroWidth, heroHeight, 115, 175, 850, 745);
       first.ctx.fillStyle = theme.ink;
       first.ctx.textAlign = "center";
       const title = `${product.brand} ${product.name}`.toUpperCase();
@@ -251,7 +335,7 @@ export default function CatalogueImageGenerator({
         { name: "02-collection", url: second.canvas.toDataURL("image/png", 1) },
         { name: "03-qr", url: third.canvas.toDataURL("image/png", 1) },
       ]);
-      setMessage("3 slide HD berhasil dibuat (1080 × 1350 px).");
+      setMessage(failedCount ? `3 slide HD berhasil dibuat. ${failedCount} foto bermasalah dilewati otomatis.` : "3 slide HD berhasil dibuat (1080 × 1350 px).");
     } catch {
       setMessage("Ada foto yang tidak bisa diproses. Coba ganti foto atau upload ulang ke dashboard.");
     } finally {
@@ -276,11 +360,15 @@ export default function CatalogueImageGenerator({
       </header>
 
       {choices.length ? <>
+        <div className="generator-tools">
+          <label className="upload-generator-photo"><Upload size={17}/> Tambah foto dari perangkat<input type="file" accept="image/*" multiple onChange={event => { addUploads(event.target.files); event.currentTarget.value = ""; }}/></label>
+          <label className="remove-background-option"><input type="checkbox" checked={removeBackground} onChange={event => setRemoveBackground(event.target.checked)}/><span><Check size={14}/></span> Hapus background foto depan otomatis</label>
+        </div>
         <div className="generator-image-picker">
-          {choices.map(({ variant, url }) => {
-            const active = selected.includes(variant.id);
-            return <button type="button" key={variant.id} className={active ? "selected" : ""} onClick={() => setSelected(ids => active ? ids.filter(id => id !== variant.id) : ids.length < 8 ? [...ids, variant.id] : ids)}>
-              <img src={url} alt={`${product.name} ${variant.name}`}/><span>{variant.name}</span>{active && <i><Check size={14}/></i>}
+          {choices.map(({ id, label, url, local }) => {
+            const active = selected.includes(id);
+            return <button type="button" key={id} className={active ? "selected" : ""} onClick={() => setSelected(ids => active ? ids.filter(itemId => itemId !== id) : ids.length < 8 ? [...ids, id] : ids)}>
+              <img src={url} alt={`${product.name} ${label}`}/><span>{label}</span>{local && <em>Upload</em>}{active && <i><Check size={14}/></i>}
             </button>;
           })}
         </div>
