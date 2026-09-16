@@ -374,7 +374,7 @@ export default function CatalogueImageGenerator({
       const titleSize = 46;
       first.ctx.font = `500 ${titleSize}px Georgia, serif`;
       const titleLines = wrapTwoLines(first.ctx, title, 860);
-      const titleY = titleLines.length > 1 ? 1024 : 1060;
+      const titleY = titleLines.length > 1 ? 1014 : 1028;
       titleLines.forEach((line, index) => first.ctx.fillText(line, SIZE.width / 2, titleY + index * (titleSize + 8)));
       first.ctx.font = "500 24px Arial, sans-serif";
       first.ctx.letterSpacing = "8px";
