@@ -51,8 +51,21 @@ function proxiedUrl(url: string) {
 }
 
 function highestResolutionUrl(url: string) {
-  if (!/img\.ltwebstatic\.com/i.test(url)) return url;
-  return url.replace(/_thumbnail_\d+x(?:\d+)?(?=\.[a-z0-9]+(?:\?|$))/i, "");
+  let upgraded = url;
+  if (/img\.ltwebstatic\.com/i.test(upgraded)) {
+    upgraded = upgraded.replace(/_thumbnail_\d+x(?:\d+)?(?=\.[a-z0-9]+(?:\?|$))/i, "");
+  }
+  if (/cdn\.shopify\.com/i.test(upgraded)) {
+    upgraded = upgraded.replace(/_\d+x(?:\d+)?(?=\.[a-z0-9]+(?:\?|$))/i, "");
+  }
+  try {
+    const parsed = new URL(upgraded);
+    for (const key of ["w", "width", "h", "height", "resize", "quality", "q"]) parsed.searchParams.delete(key);
+    upgraded = parsed.toString();
+  } catch {
+    // Keep non-URL sources such as data and blob URLs unchanged.
+  }
+  return upgraded;
 }
 
 function loadImageOnce(url: string) {
@@ -65,14 +78,50 @@ function loadImageOnce(url: string) {
   });
 }
 
-async function loadImage(url: string) {
+function enhanceImage(img: HTMLImageElement) {
+  const sourceWidth = img.naturalWidth;
+  const sourceHeight = img.naturalHeight;
+  const longestSide = Math.max(sourceWidth, sourceHeight);
+  const scale = Math.min(2.5, Math.max(1, 3000 / longestSide));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(sourceWidth * scale);
+  canvas.height = Math.round(sourceHeight * scale);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const source = new Uint8ClampedArray(image.data);
+  const data = image.data;
+  const width = canvas.width;
+  const height = canvas.height;
+  const amount = 0.22;
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const index = (y * width + x) * 4;
+      for (let channel = 0; channel < 3; channel += 1) {
+        const center = source[index + channel];
+        const surrounding = source[index - 4 + channel] + source[index + 4 + channel]
+          + source[index - width * 4 + channel] + source[index + width * 4 + channel];
+        data[index + channel] = Math.max(0, Math.min(255, center + amount * (center * 4 - surrounding)));
+      }
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}
+
+async function loadImage(url: string, enhance = true) {
   const candidates = [...new Set([highestResolutionUrl(url), url])];
   for (const candidate of candidates) {
     try {
-      return await loadImageOnce(proxiedUrl(candidate));
+      const loaded = await loadImageOnce(proxiedUrl(candidate));
+      return enhance ? enhanceImage(loaded) : loaded;
     } catch {
       try {
-        return await loadImageOnce(candidate);
+        const loaded = await loadImageOnce(candidate);
+        return enhance ? enhanceImage(loaded) : loaded;
       } catch {
         // Continue to the original thumbnail only when the full-size asset fails.
       }
@@ -81,12 +130,14 @@ async function loadImage(url: string) {
   throw new Error("Foto gagal dimuat");
 }
 
-function coverImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
-  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+function coverImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCanvasElement, x: number, y: number, w: number, h: number) {
+  const imageWidth = img instanceof HTMLImageElement ? img.naturalWidth : img.width;
+  const imageHeight = img instanceof HTMLImageElement ? img.naturalHeight : img.height;
+  const scale = Math.max(w / imageWidth, h / imageHeight);
   const sw = w / scale;
   const sh = h / scale;
-  const sx = (img.naturalWidth - sw) / 2;
-  const sy = (img.naturalHeight - sh) / 2;
+  const sx = (imageWidth - sw) / 2;
+  const sy = (imageHeight - sh) / 2;
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
@@ -360,7 +411,7 @@ export default function CatalogueImageGenerator({
       third.ctx.letterSpacing = "0px";
       const catalogueUrl = `${window.location.origin}/`;
       const qrUrl = await QRCode.toDataURL(catalogueUrl, { width: 660 * EXPORT_SCALE, margin: 2, errorCorrectionLevel: "H", color: { dark: "#000000", light: "#ffffff" } });
-      const qr = await loadImage(qrUrl);
+      const qr = await loadImage(qrUrl, false);
       third.ctx.fillStyle = "white";
       third.ctx.fillRect(180, 360, 720, 720);
       third.ctx.drawImage(qr, 210, 390, 660, 660);
