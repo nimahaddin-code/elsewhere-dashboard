@@ -102,6 +102,7 @@
 .generated-caption textarea { width:100%;min-height:245px;resize:vertical;border:1px solid var(--line);border-radius:9px;padding:14px;background:#fff;color:var(--ink);font:13px/1.65 Arial,sans-serif; }
 .generated-caption button { display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;border:0;border-radius:8px;padding:0 14px;background:var(--generator-accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer; }
 .download-all { grid-column:1/-1;justify-self:start;min-height:42px;background:var(--plum);color:white;padding:8px 16px; }
+.save-gallery { display:none;grid-column:1/-1;align-items:center;justify-content:center;gap:7px;min-height:44px;border:0;border-radius:8px;padding:9px 16px;background:var(--generator-accent);color:#fff;font-size:12px;font-weight:750;cursor:pointer; }
 .spin { animation:generator-spin .8s linear infinite; }
 @keyframes generator-spin { to { transform:rotate(360deg); } }
 @media(max-width:760px) {
@@ -113,6 +114,8 @@
  .crop-editor-preview { max-width:320px; }
  .generator-actions { align-items:flex-start;flex-direction:column;padding:8px 20px 20px; }
  .generated-slides { grid-template-columns:1fr;padding:4px 20px 22px; }
+ .save-gallery { display:flex;width:100%; }
+ .download-all { width:100%;justify-content:center; }
  .generated-caption { grid-template-columns:1fr;margin:0 20px 22px; }
  .slide-preview { max-width:320px; }
 }

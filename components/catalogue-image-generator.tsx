@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Crop, Download, ImageIcon, LoaderCircle, RotateCcw, Save, Sparkles, Upload } from "lucide-react";
+import { Check, Copy, Crop, Download, ImageIcon, Images, LoaderCircle, RotateCcw, Save, Sparkles, Upload } from "lucide-react";
 import { zipSync } from "fflate";
 import QRCode from "qrcode";
 
@@ -506,6 +506,34 @@ export default function CatalogueImageGenerator({
     }
   };
 
+  const saveToGallery = async () => {
+    try {
+      setMessage("Menyiapkan foto HD untuk galeri…");
+      const baseName = safeFilename(`${product.brand}-${product.name}`);
+      const files = await Promise.all(slides.map(async slide => {
+        const blob = await (await fetch(slide.url)).blob();
+        return new File([blob], `${baseName}-${slide.name}.png`, { type: "image/png" });
+      }));
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files }))) {
+        await navigator.share({ files, title: `${product.name} — Elsewhere & Co.` });
+        setMessage("Pilih Simpan Gambar/Save Image pada menu HP untuk memasukkannya ke galeri.");
+        return;
+      }
+      files.forEach(file => {
+        const url = URL.createObjectURL(file);
+        download(url, file.name);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      });
+      setMessage("Perangkat ini memakai mode download. Foto tersimpan di Downloads dan dapat dibuka dari Galeri.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setMessage("Penyimpanan ke galeri dibatalkan.");
+      } else {
+        setMessage("Foto belum bisa disimpan ke galeri. Gunakan Download ZIP sebagai alternatif.");
+      }
+    }
+  };
+
   return (
     <section className="catalogue-generator panel" style={{ "--generator-bg": theme.background, "--generator-accent": theme.accent } as React.CSSProperties}>
       <header className="generator-heading">
@@ -529,13 +557,13 @@ export default function CatalogueImageGenerator({
           {chosen.map(choice => <button type="button" key={choice.id} className={editingCropId === choice.id ? "active" : ""} onClick={() => setEditingCropId(choice.id)}><Crop size={14}/> Atur crop: {choice.label}</button>)}
         </div>
         {editingChoice && <section className="crop-editor">
-          <div className="crop-editor-preview"><img src={editingChoice.url} alt={`Atur crop ${editingChoice.label}`} style={{ transform: `translate(${-editingCrop.x * 0.16}%, ${-editingCrop.y * 0.16}%) scale(${editingCrop.zoom})` }}/><span>Preview area foto</span></div>
+          <div className="crop-editor-preview"><img src={editingChoice.url} alt={`Atur crop ${editingChoice.label}`} style={{ transform: `translate(${-editingCrop.x * 0.16}%, ${-editingCrop.y * 0.16}%) scale(${editingCrop.zoom})` }}/><span>Preview dari foto asli</span></div>
           <div className="crop-editor-controls">
-            <div><strong>Atur posisi “{editingChoice.label}”</strong><p>Geser slider sampai bagian produk yang penting terlihat pas di dalam bingkai.</p></div>
+            <div><strong>Atur posisi “{editingChoice.label}”</strong><p>Selalu diproses ulang dari foto asli—crop tidak ditumpuk dan kualitas tetap maksimal.</p></div>
             <label>Kiri ↔ kanan <input type="range" min="-100" max="100" value={editingCrop.x} onChange={event => updateCrop({ x: Number(event.target.value) })}/></label>
             <label>Atas ↕ bawah <input type="range" min="-100" max="100" value={editingCrop.y} onChange={event => updateCrop({ y: Number(event.target.value) })}/></label>
             <label>Zoom <input type="range" min="1" max="2.5" step="0.05" value={editingCrop.zoom} onChange={event => updateCrop({ zoom: Number(event.target.value) })}/></label>
-            <div className="crop-editor-actions"><button type="button" onClick={() => updateCrop(defaultCrop)}><RotateCcw size={14}/> Reset</button><button type="button" className="save-crop" disabled={busy} onClick={() => void persistCrops()}><Save size={14}/> Simpan & update slide</button></div>
+            <div className="crop-editor-actions"><button type="button" onClick={() => updateCrop(defaultCrop)}><RotateCcw size={14}/> Kembali ke foto asli</button><button type="button" className="save-crop" disabled={busy} onClick={() => void persistCrops()}><Save size={14}/> Simpan & update slide</button></div>
           </div>
         </section>}
         <div className="generator-actions">
@@ -554,6 +582,7 @@ export default function CatalogueImageGenerator({
           <div><button type="button" onClick={() => copySlide(slide)}><Copy size={14}/> Copy</button><button type="button" onClick={() => download(slide.url, `${product.brand}-${product.name}-${slide.name}.png`)}><Download size={14}/> PNG</button></div>
         </article>)}
         <button type="button" className="download-all" onClick={downloadAll}><Download size={16}/> Download ZIP ({slides.length} slide)</button>
+        <button type="button" className="save-gallery" onClick={() => void saveToGallery()}><Images size={16}/> Simpan ke galeri ({slides.length} foto)</button>
       </div>}
       {slides.length > 0 && caption && <section className="generated-caption">
         <div><span>CAPTION SIAP POST</span><h3>Copywriting otomatis</h3><p>Harga dan informasi mengikuti foto yang terakhir kamu generate.</p></div>
