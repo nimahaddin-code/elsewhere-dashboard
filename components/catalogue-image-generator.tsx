@@ -26,14 +26,16 @@ type CropSetting = { x: number; y: number; zoom: number };
 
 const SIZE = { width: 1080, height: 1350 };
 const EXPORT_SCALE = 4;
-const themes: Record<"fashion" | "food" | "health", Theme> = {
+const themes: Record<"fashion" | "food" | "health" | "beauty", Theme> = {
   fashion: { background: "#f5d0d2", panel: "#e8b9bc", accent: "#8b6650", ink: "#201b1b", label: "FASHION" },
   food: { background: "#f8e7a5", panel: "#f2d66f", accent: "#9b6828", ink: "#332413", label: "FOOD & DRINK" },
   health: { background: "#dcebd4", panel: "#bcd6ad", accent: "#527044", ink: "#1e2b1b", label: "HEALTH & WELLNESS" },
+  beauty: { background: "#dceff7", panel: "#bcddea", accent: "#507d91", ink: "#1d2d35", label: "BEAUTY" },
 };
 
 function themeFor(category: string) {
   if (/makanan|minuman|snack|food|drink/i.test(category)) return themes.food;
+  if (/kecantikan|skincare|makeup|beauty|cosmetic/i.test(category)) return themes.beauty;
   if (/obat|kesehatan|suplemen|vitamin|health|medicine/i.test(category)) return themes.health;
   return themes.fashion;
 }
