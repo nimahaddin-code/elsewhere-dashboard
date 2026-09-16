@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Download, ImageIcon, LoaderCircle, Sparkles, Upload } from "lucide-react";
+import { Check, Copy, Crop, Download, ImageIcon, LoaderCircle, RotateCcw, Save, Sparkles, Upload } from "lucide-react";
 import { zipSync } from "fflate";
 import QRCode from "qrcode";
 
@@ -22,6 +22,7 @@ type GeneratorVariant = {
 type Slide = { name: string; url: string };
 type Theme = { background: string; panel: string; accent: string; ink: string; label: string };
 type ImageChoice = { id: string; label: string; url: string; variant: GeneratorVariant; local?: boolean };
+type CropSetting = { x: number; y: number; zoom: number };
 
 const SIZE = { width: 1080, height: 1350 };
 const EXPORT_SCALE = 4;
@@ -130,14 +131,18 @@ async function loadImage(url: string, enhance = true) {
   throw new Error("Foto gagal dimuat");
 }
 
-function coverImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCanvasElement, x: number, y: number, w: number, h: number) {
+const defaultCrop: CropSetting = { x: 0, y: 0, zoom: 1 };
+
+function coverImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement | HTMLCanvasElement, x: number, y: number, w: number, h: number, crop: CropSetting = defaultCrop) {
   const imageWidth = img instanceof HTMLImageElement ? img.naturalWidth : img.width;
   const imageHeight = img instanceof HTMLImageElement ? img.naturalHeight : img.height;
   const scale = Math.max(w / imageWidth, h / imageHeight);
-  const sw = w / scale;
-  const sh = h / scale;
-  const sx = (imageWidth - sw) / 2;
-  const sy = (imageHeight - sh) / 2;
+  const sw = w / scale / crop.zoom;
+  const sh = h / scale / crop.zoom;
+  const maxX = Math.max(0, imageWidth - sw);
+  const maxY = Math.max(0, imageHeight - sh);
+  const sx = Math.max(0, Math.min(maxX, maxX / 2 + (crop.x / 100) * (maxX / 2)));
+  const sy = Math.max(0, Math.min(maxY, maxY / 2 + (crop.y / 100) * (maxY / 2)));
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
@@ -282,6 +287,8 @@ export default function CatalogueImageGenerator({
   const [caption, setCaption] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [cropSettings, setCropSettings] = useState<Record<string, CropSetting>>({});
+  const [editingCropId, setEditingCropId] = useState<string | null>(null);
   const theme = themeFor(product.category);
 
   useEffect(() => {
@@ -291,9 +298,28 @@ export default function CatalogueImageGenerator({
       if (saved.length) setMessage("Hasil generate terakhir dipulihkan otomatis.");
     });
     setCaption(localStorage.getItem(`elsewhere-caption-${product.id}`) || "");
+    try {
+      setCropSettings(JSON.parse(localStorage.getItem(`elsewhere-crops-${product.id}`) || "{}"));
+    } catch {
+      setCropSettings({});
+    }
+    setEditingCropId(null);
   }, [product.id, variantChoices.length]);
 
   const chosen = choices.filter((choice) => selected.includes(choice.id));
+  const editingChoice = choices.find(choice => choice.id === editingCropId);
+  const editingCrop = editingCropId ? cropSettings[editingCropId] || defaultCrop : defaultCrop;
+
+  const updateCrop = (patch: Partial<CropSetting>) => {
+    if (!editingCropId) return;
+    setCropSettings(current => ({ ...current, [editingCropId]: { ...(current[editingCropId] || defaultCrop), ...patch } }));
+  };
+
+  const persistCrops = async () => {
+    localStorage.setItem(`elsewhere-crops-${product.id}`, JSON.stringify(cropSettings));
+    setMessage("Posisi foto tersimpan. Memperbarui slide HD…");
+    await generate();
+  };
 
   const addUploads = (files: FileList | null) => {
     if (!files?.length || !variants[0]) return;
@@ -317,6 +343,7 @@ export default function CatalogueImageGenerator({
       return;
     }
     setBusy(true);
+    localStorage.setItem(`elsewhere-crops-${product.id}`, JSON.stringify(cropSettings));
     setMessage("Menyiapkan gambar HD…");
     try {
       const attempts = await Promise.allSettled(chosen.map(async (choice) => ({ ...choice, image: await loadImage(choice.url) })));
@@ -333,7 +360,7 @@ export default function CatalogueImageGenerator({
       first.ctx.save();
       roundedRect(first.ctx, 105, 175, 870, 755, 190);
       first.ctx.clip();
-      coverImage(first.ctx, loaded[0].image, 105, 175, 870, 755);
+      coverImage(first.ctx, loaded[0].image, 105, 175, 870, 755, cropSettings[loaded[0].id]);
       first.ctx.restore();
       first.ctx.strokeStyle = `${theme.accent}88`;
       first.ctx.lineWidth = 3;
@@ -380,7 +407,7 @@ export default function CatalogueImageGenerator({
         second.ctx.save();
         roundedRect(second.ctx, x, y, 386, 285, 18);
         second.ctx.clip();
-        coverImage(second.ctx, item.image, x, y, 386, 285);
+        coverImage(second.ctx, item.image, x, y, 386, 285, cropSettings[item.id]);
         second.ctx.restore();
         second.ctx.fillStyle = theme.ink;
         second.ctx.textAlign = "left";
@@ -498,6 +525,19 @@ export default function CatalogueImageGenerator({
             </button>;
           })}
         </div>
+        <div className="crop-photo-buttons">
+          {chosen.map(choice => <button type="button" key={choice.id} className={editingCropId === choice.id ? "active" : ""} onClick={() => setEditingCropId(choice.id)}><Crop size={14}/> Atur crop: {choice.label}</button>)}
+        </div>
+        {editingChoice && <section className="crop-editor">
+          <div className="crop-editor-preview"><img src={editingChoice.url} alt={`Atur crop ${editingChoice.label}`} style={{ transform: `translate(${-editingCrop.x * 0.16}%, ${-editingCrop.y * 0.16}%) scale(${editingCrop.zoom})` }}/><span>Preview area foto</span></div>
+          <div className="crop-editor-controls">
+            <div><strong>Atur posisi “{editingChoice.label}”</strong><p>Geser slider sampai bagian produk yang penting terlihat pas di dalam bingkai.</p></div>
+            <label>Kiri ↔ kanan <input type="range" min="-100" max="100" value={editingCrop.x} onChange={event => updateCrop({ x: Number(event.target.value) })}/></label>
+            <label>Atas ↕ bawah <input type="range" min="-100" max="100" value={editingCrop.y} onChange={event => updateCrop({ y: Number(event.target.value) })}/></label>
+            <label>Zoom <input type="range" min="1" max="2.5" step="0.05" value={editingCrop.zoom} onChange={event => updateCrop({ zoom: Number(event.target.value) })}/></label>
+            <div className="crop-editor-actions"><button type="button" onClick={() => updateCrop(defaultCrop)}><RotateCcw size={14}/> Reset</button><button type="button" className="save-crop" disabled={busy} onClick={() => void persistCrops()}><Save size={14}/> Simpan & update slide</button></div>
+          </div>
+        </section>}
         <div className="generator-actions">
           <button type="button" className="generate-slides" disabled={busy || !selected.length} onClick={generate}>
             {busy ? <LoaderCircle className="spin" size={18}/> : <ImageIcon size={18}/>} {busy ? "Sedang generate…" : "Generate 3 slide HD"}
