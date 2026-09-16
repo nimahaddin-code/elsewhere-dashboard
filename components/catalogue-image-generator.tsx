@@ -345,20 +345,20 @@ export default function CatalogueImageGenerator({
       const titleSize = 46;
       first.ctx.font = `500 ${titleSize}px Georgia, serif`;
       const titleLines = wrapTwoLines(first.ctx, title, 860);
-      const titleY = titleLines.length > 1 ? 1028 : 1062;
+      const titleY = titleLines.length > 1 ? 1052 : 1086;
       titleLines.forEach((line, index) => first.ctx.fillText(line, SIZE.width / 2, titleY + index * (titleSize + 8)));
       first.ctx.font = "500 24px Arial, sans-serif";
       first.ctx.letterSpacing = "8px";
-      first.ctx.fillText(theme.label, SIZE.width / 2, 1148);
+      first.ctx.fillText(theme.label, SIZE.width / 2, 1172);
       first.ctx.letterSpacing = "0px";
       first.ctx.strokeStyle = theme.accent;
       first.ctx.lineWidth = 2;
-      roundedRect(first.ctx, 330, 1170, 420, 92, 46);
+      roundedRect(first.ctx, 330, 1194, 420, 92, 46);
       first.ctx.stroke();
       first.ctx.font = "500 25px Arial, sans-serif";
       first.ctx.letterSpacing = "6px";
       const singleProduct = loaded.length === 1;
-      first.ctx.fillText(singleProduct ? `PRICE  RP${sellingPrice(loaded[0].variant).toLocaleString("id-ID")}` : `START FROM  ${shortPrice(roundedStart(minPrice))}`, SIZE.width / 2, 1227);
+      first.ctx.fillText(singleProduct ? `PRICE  RP${sellingPrice(loaded[0].variant).toLocaleString("id-ID")}` : `START FROM  ${shortPrice(roundedStart(minPrice))}`, SIZE.width / 2, 1251);
 
       const second = baseCanvas(theme);
       second.ctx.fillStyle = theme.ink;
