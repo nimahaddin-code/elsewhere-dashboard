@@ -24,7 +24,7 @@ type Theme = { background: string; panel: string; accent: string; ink: string; l
 type ImageChoice = { id: string; label: string; url: string; variant: GeneratorVariant; local?: boolean };
 
 const SIZE = { width: 1080, height: 1350 };
-const EXPORT_SCALE = 2;
+const EXPORT_SCALE = 4;
 const themes: Record<"fashion" | "food" | "health", Theme> = {
   fashion: { background: "#f5d0d2", panel: "#e8b9bc", accent: "#8b6650", ink: "#201b1b", label: "FASHION" },
   food: { background: "#f8e7a5", panel: "#f2d66f", accent: "#9b6828", ink: "#332413", label: "FOOD & DRINK" },
@@ -50,6 +50,11 @@ function proxiedUrl(url: string) {
   return `/api/image?url=${encodeURIComponent(url)}`;
 }
 
+function highestResolutionUrl(url: string) {
+  if (!/img\.ltwebstatic\.com/i.test(url)) return url;
+  return url.replace(/_thumbnail_\d+x(?:\d+)?(?=\.[a-z0-9]+(?:\?|$))/i, "");
+}
+
 function loadImageOnce(url: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
@@ -61,11 +66,19 @@ function loadImageOnce(url: string) {
 }
 
 async function loadImage(url: string) {
-  try {
-    return await loadImageOnce(proxiedUrl(url));
-  } catch {
-    return loadImageOnce(url);
+  const candidates = [...new Set([highestResolutionUrl(url), url])];
+  for (const candidate of candidates) {
+    try {
+      return await loadImageOnce(proxiedUrl(candidate));
+    } catch {
+      try {
+        return await loadImageOnce(candidate);
+      } catch {
+        // Continue to the original thumbnail only when the full-size asset fails.
+      }
+    }
   }
+  throw new Error("Foto gagal dimuat");
 }
 
 function coverImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
@@ -346,7 +359,7 @@ export default function CatalogueImageGenerator({
       third.ctx.fillText("TO FIND ALL ITEMS", SIZE.width / 2, 292);
       third.ctx.letterSpacing = "0px";
       const catalogueUrl = `${window.location.origin}/`;
-      const qrUrl = await QRCode.toDataURL(catalogueUrl, { width: 660, margin: 2, errorCorrectionLevel: "H", color: { dark: "#000000", light: "#ffffff" } });
+      const qrUrl = await QRCode.toDataURL(catalogueUrl, { width: 660 * EXPORT_SCALE, margin: 2, errorCorrectionLevel: "H", color: { dark: "#000000", light: "#ffffff" } });
       const qr = await loadImage(qrUrl);
       third.ctx.fillStyle = "white";
       third.ctx.fillRect(180, 360, 720, 720);
@@ -379,7 +392,7 @@ export default function CatalogueImageGenerator({
       setCaption(nextCaption);
       localStorage.setItem(`elsewhere-caption-${product.id}`, nextCaption);
       const slideCount = nextSlides.length;
-      setMessage(failedCount ? `${slideCount} slide HD berhasil dibuat. ${failedCount} foto bermasalah dilewati otomatis.` : `${slideCount} slide HD berhasil dibuat (1080 × 1350 px).`);
+      setMessage(failedCount ? `${slideCount} slide Maximum HD berhasil dibuat. ${failedCount} foto bermasalah dilewati otomatis.` : `${slideCount} slide Maximum HD berhasil dibuat (4320 × 5400 px).`);
     } catch {
       setMessage("Ada foto yang tidak bisa diproses. Coba ganti foto atau upload ulang ke dashboard.");
     } finally {
@@ -419,7 +432,7 @@ export default function CatalogueImageGenerator({
     <section className="catalogue-generator panel" style={{ "--generator-bg": theme.background, "--generator-accent": theme.accent } as React.CSSProperties}>
       <header className="generator-heading">
         <div><span>SMART CATALOGUE STUDIO</span><h2>Generate 3 slide katalog</h2><p>Pilih foto yang mau ditampilkan. Warna, nama, varian, harga, dan QR disusun otomatis.</p></div>
-        <div className="hd-badge"><Sparkles size={16}/> Ultra HD 2160 × 2700</div>
+        <div className="hd-badge"><Sparkles size={16}/> Maximum HD 4320 × 5400</div>
       </header>
 
       {choices.length ? <>
