@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   type Order,
+  normalizePhone,
   orderStatuses,
   paidAmount,
   paymentLabel,
@@ -244,6 +245,12 @@ function OrderDetail({
       <span className="commerce-eyebrow">DETAIL PESANAN</span>
       <h2>{order.customer_name}</h2>
       <small className="order-code">{order.order_code}</small>
+      {order.status === 'new' && !order.order_payments.some((payment) => payment.verified_at) && (
+        <div className="payment-attention" role="status">
+          <strong>Menunggu konfirmasi pembayaran</strong>
+          <span>Catat pembayaran di bawah, buka bukti transfer, lalu klik Verifikasi pembayaran setelah dana diterima.</span>
+        </div>
+      )}
       <a
         href={`https://wa.me/${order.phone}?text=${encodeURIComponent(`Halo ${order.customer_name}, kami dari Elsewhere ingin mengonfirmasi pesanan ${order.order_code}.`)}`}
         target="_blank"
@@ -331,6 +338,7 @@ function OrderDetail({
         </p>
       </form>
       <h3>Riwayat pembayaran</h3>
+      <p className="commerce-help payment-record-help">Setiap pembayaran tercatat sebagai riwayat. Jangan klik verifikasi sebelum nominal dan bukti transfer sudah cocok.</p>
       {!order.order_payments.length && <p>Belum ada pembayaran.</p>}
       {order.order_payments.map((payment) => (
         <div className="payment-row" key={payment.id}>
@@ -339,6 +347,16 @@ function OrderDetail({
           <small>
             {payment.verified_at ? 'Terverifikasi' : 'Menunggu verifikasi'}
           </small>
+          {payment.verified_at && (
+            <a
+              className="payment-confirm-whatsapp"
+              href={`https://wa.me/${normalizePhone(order.phone)}?text=${encodeURIComponent(`Halo ${order.customer_name}, pembayaran untuk pesanan ${order.order_code} sudah kami konfirmasi. Pesananmu akan kami proses selanjutnya.`)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Kirim konfirmasi WhatsApp
+            </a>
+          )}
           {payment.receipt_path && (
             <button
               disabled={busy}

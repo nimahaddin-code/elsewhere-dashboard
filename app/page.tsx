@@ -217,7 +217,7 @@ export default function Home() {
   if (!supabaseConfigured) return <div className="auth-screen"><div className="auth-card"><h1>Elsewhere sedang disiapkan</h1><p>Koneksi layanan belum dikonfigurasi. Silakan kembali lagi nanti.</p></div></div>;
   return typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard") ? <Dashboard/> : <Landing/>;
 }
-function Dashboard() {
+export function Dashboard() {
   const [nav, setNav] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -333,7 +333,6 @@ function Dashboard() {
     { text: "Test waitlist form end-to-end", done: false, tag: "Launch" },
   ]);
   const done = tasks.filter((t) => t.done).length;
-  const dashboardRoute=typeof window!=="undefined"&&window.location.pathname.startsWith("/dashboard");
   const activeTrip = trips.find((t) => t.code === activeTripCode);
   const rate = rateDraft?.trip === activeTripCode ? rateDraft.value : 0;
   const setRate = (value: number) => setRateDraft({ trip: activeTripCode, value });
@@ -889,7 +888,6 @@ function Dashboard() {
   useEffect(() => {
     setTargetFund(plannedCapital);
   }, [plannedCapital]);
-  if(!dashboardRoute)return <Landing/>;
   if (authLoading)
     return (
       <div className="auth-screen">

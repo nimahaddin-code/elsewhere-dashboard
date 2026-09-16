@@ -26,7 +26,11 @@ Perubahan ini belum diterapkan ke database live. Jangan menjalankan migrasi pert
    - `supabase/migrations/202609120001_commerce.sql`
    - `supabase/migrations/202609130001_preorder_and_rates.sql`
    - `supabase/migrations/202609130002_scheduled_rates.sql`
+   - `supabase/migrations/202609160001_easy_order_codes.sql`
+   - `supabase/migrations/202609160002_short_order_codes.sql`
+   - `supabase/migrations/202609160003_customer_payment_proof.sql`
    File terakhir mengaktifkan HTTP dan pg_cron, membuat dua jadwal, lalu mengambil kurs pertama. Setup dibatalkan jika kurs Malaysia tidak tersedia; perbaiki penyebab lalu ulangi file terakhir. Jangan mengulangi migrasi yang sudah berhasil.
+   Setelah migration selesai, jalankan `NOTIFY pgrst, 'reload schema';` di SQL Editor jika RPC baru masih belum terlihat oleh API.
 5. Deploy frontend yang cocok segera setelah migrasi; atur Supabase Auth Site URL ke domain live dan Redirect URLs untuk `/dashboard` agar reset password kembali ke dashboard.
 6. Login sebagai owner/editor, pilih Malaysia trip, ubah Planning ke Open PO. Pastikan produk Ready sudah dipublish dan varian aktif dengan harga/berat benar. Migrasi tidak mempublikasikan draft secara otomatis.
 

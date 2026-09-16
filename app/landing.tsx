@@ -1,27 +1,40 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Search, ShoppingBag, Sparkles } from 'lucide-react';
+import { Search, ShoppingBag, SlidersHorizontal, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 import type {
   CatalogueProduct as PublicProduct,
-  CatalogueVariant,
 } from '../lib/commerce';
 import { rupiah } from '../lib/pricing';
-import OrderForm from '../components/order-form';
 import ProductPhoto from '../components/product-photo';
+import { CartButton, CartDialog, ProductDetail, CheckoutDialog, type CartItem } from '../components/storefront-commerce';
 
 export default function Landing() {
   const [items, setItems] = useState<PublicProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [ordering, setOrdering] = useState<{
-    product: PublicProduct;
-    variant: CatalogueVariant;
-  } | null>(null);
+  const [detailProduct, setDetailProduct] = useState<PublicProduct | null>(null);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [cartPulse, setCartPulse] = useState(false);
+  const [cartFeedback, setCartFeedback] = useState('');
   const [category, setCategory] = useState('Semua');
   const [brand, setBrand] = useState('Semua');
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<Record<string, { option1?: string; option2?: string }>>({});
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const addToCart = (item: CartItem) => {
+    setCart((current) => {
+      const existing = current.findIndex((value) => value.variant.id === item.variant.id);
+      if (existing < 0) return [...current, item];
+      return current.map((value, index) => index === existing ? { ...value, quantity: value.quantity + item.quantity } : value);
+    });
+    setCartPulse(true);
+    setCartFeedback(`${item.product.name} masuk ke keranjang`);
+    window.setTimeout(() => setCartPulse(false), 650);
+    window.setTimeout(() => setCartFeedback(''), 2400);
+  };
   const load = async () => {
     try {
       const { data, error } = await supabase.rpc('commerce_catalogue');
@@ -69,12 +82,9 @@ export default function Landing() {
       (brand === 'Semua' || x.brand === brand) &&
       `${x.name} ${x.brand}`.toLowerCase().includes(query.toLowerCase()),
   );
-  const countries = [...new Set(items.map((p) => p.country))];
   return (
     <div className="storefront">
-      <div className="store-strip">
-        JASTIP ASIA CURATED BY ELSEWHERE & CO. · GOOD THINGS, FOUND ELSEWHERE.
-      </div>
+      <div className="store-strip">CURATED FINDS FROM ASIA · PERSONAL SHOPPING, MADE SIMPLE</div>
       <header className="store-header">
         <a className="store-logo" href="/">
           <b>Elsewhere</b>
@@ -88,109 +98,48 @@ export default function Landing() {
             placeholder="Cari produk atau brand..."
           />
         </div>
-        <a href="/dashboard" className="store-team-link">
-          Area tim
-        </a>
+        <CartButton count={cartCount} pulse={cartPulse} onClick={() => setCartOpen(true)} />
       </header>
-      <nav className="store-nav">
-        <button
-          className={category === 'Semua' ? 'active' : ''}
-          onClick={() => {
-            setCategory('Semua');
-            setBrand('Semua');
-          }}
-        >
-          New In
-        </button>
-        {categories
-          .filter((x) => x !== 'Semua')
-          .map((c) => (
-            <div className="nav-category" key={c}>
-              <button
-                className={category === c ? 'active' : ''}
-                onClick={() => {
-                  setCategory(c);
-                  setBrand('Semua');
-                }}
-              >
-                {c}
-                <ChevronDown size={13} />
-              </button>
-              <div className="brand-menu">
-                <b>Brands</b>
-                {[
-                  'Semua',
-                  ...new Set(
-                    items
-                      .filter((x) => x.category === c)
-                      .map((x) => x.brand)
-                      .filter(Boolean),
-                  ),
-                ].map((b) => (
-                  <button
-                    key={b}
-                    onClick={() => {
-                      setCategory(c);
-                      setBrand(b);
-                    }}
-                  >
-                    {b}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-      </nav>
+      {cartFeedback && <div className="cart-feedback" role="status"><ShoppingBag size={15} /> {cartFeedback}</div>}
       <section className="store-hero">
         <div>
           <span>
-            <Sparkles size={14} />{' '}
-            {countries.length
-              ? countries.join(' · ').toUpperCase() + ' EDIT'
-              : 'ELSEWHERE EDIT'}
+            <span className="malaysia-flag" role="img" aria-label="Bendera Malaysia">🇲🇾</span>
+            KUALA LUMPUR, MALAYSIA
           </span>
           <h1>
-            Your Asia wishlist,
+            Finds worth
             <br />
-            found elsewhere.
+            bringing home.
           </h1>
           <p>
-            Curated finds, transparent pricing, and personal shopping made
-            beautifully simple.
+            Temukan produk pilihan dari perjalanan kami, dengan harga yang jelas
+            dan proses pemesanan yang mudah.
           </p>
-          <a href="#catalogue">Shop the edit</a>
+          <a href="#catalogue">Jelajahi katalog</a>
         </div>
-        <div className="hero-stamp">
-          <small>FIRST DROP</small>
-          <strong>PO</strong>
-          <span>OPEN EDIT</span>
+        <div className="hero-visual" aria-label="Pilihan produk dari Kuala Lumpur">
+          {items.slice(0, 3).map((product, index) => (
+            <div className={`hero-product hero-product-${index + 1}`} key={product.id}>
+              <ProductPhoto product={product} variant={product.product_variants?.[0]} alt="" />
+            </div>
+          ))}
+          <span className="hero-visual-label">KUALA LUMPUR<br /><b>FIELD NOTES 01</b></span>
         </div>
       </section>
       <section className="catalogue-section" id="catalogue">
         <div className="catalogue-title">
           <div>
-            <span>THE LATEST EDIT</span>
-            <h2>Good things we found</h2>
+            <span>THE CATALOGUE</span>
+            <h2>Good things, found elsewhere</h2>
           </div>
-          <p>{shown.length} produk tayang</p>
+          <p>{shown.length} produk tersedia</p>
         </div>
-        <div className="mobile-filters">
-          <select
-            value={category}
-            onChange={(e) => {
-              setCategory(e.target.value);
-              setBrand('Semua');
-            }}
-          >
-            {categories.map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-          <select value={brand} onChange={(e) => setBrand(e.target.value)}>
-            {brands.map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
+        <div className="catalogue-filters-public">
+          <div className="filter-heading"><SlidersHorizontal size={16} /><span>Filter produk</span></div>
+          <label>Kategori<select value={category} onChange={(e) => { setCategory(e.target.value); setBrand('Semua'); }}>{categories.map((x) => <option key={x}>{x}</option>)}</select></label>
+          <label>Brand<select value={brand} onChange={(e) => setBrand(e.target.value)}>{brands.map((x) => <option key={x}>{x}</option>)}</select></label>
+          {(category !== 'Semua' || brand !== 'Semua' || query) && <button className="clear-filters" onClick={() => { setCategory('Semua'); setBrand('Semua'); setQuery(''); }}><X size={14} /> Hapus filter</button>}
         </div>
         {loading ? (
           <output>Memuat katalog…</output>
@@ -203,21 +152,7 @@ export default function Landing() {
           <div className="product-grid">
             {shown.map((p) => {
               const variants = p.product_variants || [];
-              const option1Values = [...new Set(variants.map((x) => x.option1_value).filter(Boolean))] as string[];
-              const option2Values = [...new Set(variants.filter(x => !selected[p.id]?.option1 || x.option1_value === selected[p.id]?.option1).map((x) => x.option2_value).filter(Boolean))] as string[];
-              const selection = selected[p.id];
-              const v = variants.find((x) =>
-                (!selection?.option1 || x.option1_value === selection.option1) &&
-                (!selection?.option2 || x.option2_value === selection.option2),
-              ) || variants[0];
-              const setOption = (key: 'option1' | 'option2', value: string) => {
-                const next = { ...selection, [key]: value };
-                if (key === 'option1') {
-                  const nextOption2 = variants.find(x => x.option1_value === value)?.option2_value || undefined;
-                  next.option2 = nextOption2;
-                }
-                setSelected((current) => ({ ...current, [p.id]: next }));
-              };
+              const v = variants[0];
               return (
                 <article className="product-card" key={p.id}>
                   <div className="product-photo">
@@ -227,26 +162,6 @@ export default function Landing() {
                   <div className="product-copy">
                     <span>{p.brand || 'Elsewhere find'}</span>
                     <h3>{p.name}</h3>
-                    {option1Values.length > 0 ? (
-                      <div className="product-options">
-                        <label>{p.option1_label || 'Pilihan 1'}<select value={selection?.option1 || option1Values[0]} onChange={e => setOption('option1', e.target.value)}>{option1Values.map(value => <option key={value}>{value}</option>)}</select></label>
-                        {option2Values.length > 0 && <label>{p.option2_label || 'Pilihan 2'}<select value={selection?.option2 || option2Values[0]} onChange={e => setOption('option2', e.target.value)}>{option2Values.map(value => <option key={value}>{value}</option>)}</select></label>}
-                      </div>
-                    ) : variants.length > 0 && (
-                      <select
-                        value={v?.id || ''}
-                        onChange={(e) =>
-                          setSelected((x) => ({ ...x, [p.id]: { option1: variants.find(variant => variant.id === e.target.value)?.option1_value || undefined, option2: variants.find(variant => variant.id === e.target.value)?.option2_value || undefined } }))
-                        }
-                      >
-                        {variants.map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.name}
-                            {x.available === null ? ' · Preorder tersedia' : ` · ${x.available} ${x.sale_mode === 'stock' ? 'stok' : 'kuota PO'}`}
-                          </option>
-                        ))}
-                      </select>
-                    )}
                     <div>
                       <strong>
                         {v?.unit_price_idr
@@ -269,7 +184,7 @@ export default function Landing() {
                         Number(v.unit_price_idr) <= 0 ||
                         (v.available !== null && v.available < 1)
                       }
-                      onClick={() => setOrdering({ product: p, variant: v })}
+                      onClick={() => setDetailProduct(p)}
                     >
                       {!v?.unit_price_idr
                         ? 'Menunggu harga'
@@ -277,7 +192,7 @@ export default function Landing() {
                           ? 'Kuota habis'
                           : v.sale_mode === 'stock'
                             ? 'Pesan sekarang'
-                            : 'Pesan preorder'}
+                            : 'Pesan pre order'}
                     </button>
                   </div>
                 </article>
@@ -289,21 +204,16 @@ export default function Landing() {
             <ShoppingBag />
             <h3>Produknya sedang dikurasi</h3>
             <p>
-              Produk tersedia saat trip membuka preorder. Coba kategori lain
+              Produk tersedia saat trip membuka pre order. Coba kategori lain
               atau kembali lagi nanti.
             </p>
           </div>
         )}
       </section>
-      {ordering && (
-        <OrderForm
-          product={ordering.product}
-          variant={ordering.variant}
-          onClose={() => setOrdering(null)}
-          onSaved={load}
-        />
-      )}
-      <footer><a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Kurs oleh ExchangeRate-API</a>
+      {detailProduct && <ProductDetail product={detailProduct} onClose={() => setDetailProduct(null)} onAdd={addToCart} />}
+      {cartOpen && <CartDialog items={cart} onClose={() => setCartOpen(false)} onChange={setCart} onCheckout={() => { setCheckoutItems(cart); setCartOpen(false); setCheckoutOpen(true); }} />}
+      {checkoutOpen && <CheckoutDialog items={checkoutItems} onClose={() => { setCheckoutOpen(false); setCheckoutItems([]); }} onComplete={() => { setCart([]); void load(); }} onFinished={() => setCheckoutItems([])} />}
+      <footer>
         <div className="store-logo">
           <b>Elsewhere</b>
           <span>& Co.</span>
