@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Download, ExternalLink, Image as ImageIcon, RefreshCw, Sparkles } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, Image as ImageIcon, RefreshCw, Share2, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { contentPlanConfig, contentPlanSlots } from "../lib/content-plan-data";
 import { findContentSlot, generateContent, type ContentPeriod, type ContentStatus, type GeneratedContent } from "../lib/content-generator";
@@ -100,6 +100,39 @@ export default function ContentPlanGenerator({ products, sellingPrice, tripCount
       setCopied("image");
     } catch { window.open(result.raw_product_image.reference, "_blank", "noopener,noreferrer"); }
   };
+  const saveOrShareImage = async () => {
+    if (!result?.raw_product_image.reference) return;
+    try {
+      const response = await fetch(result.raw_product_image.reference);
+      if (!response.ok) throw new Error("Foto tidak dapat diunduh");
+      const blob = await response.blob();
+      const extension = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+      const file = new File([blob], `elsewhere-${result.slot_id}.${extension}`, { type: blob.type || "image/jpeg" });
+
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "Foto produk Elsewhere & Co.",
+          text: "Simpan foto produk ini ke galeri.",
+        });
+        setCopied("shared");
+      } else {
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = file.name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        setCopied("downloaded");
+      }
+      window.setTimeout(() => setCopied(""), 1600);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      window.open(result.raw_product_image.reference, "_blank", "noopener,noreferrer");
+    }
+  };
 
   return <section className="content-studio">
     <div className="content-hero">
@@ -137,7 +170,7 @@ export default function ContentPlanGenerator({ products, sellingPrice, tripCount
             <Channel title="Threads" posts={result.threads.posts} onCopy={copyText} copied={copied}/>
             <Channel title="X" posts={result.x.posts} onCopy={copyText} copied={copied}/>
           </div>
-          <div className="raw-image-card"><div><span>RAW PRODUCT IMAGE</span><b>Foto yang sama untuk Threads & X</b><small>Tanpa frame, overlay, atau template Instagram.</small></div>{result.raw_product_image.reference ? <><img src={result.raw_product_image.reference} alt="Foto RAW produk"/><div className="raw-actions"><button onClick={copyImage}>{copied === "image" ? <Check/> : <Copy/>} Copy image</button><a href={result.raw_product_image.reference} download target="_blank" rel="noreferrer"><Download/> Download RAW</a><a href={result.raw_product_image.reference} target="_blank" rel="noreferrer"><ExternalLink/> Buka</a></div></> : <p>Foto RAW belum tersedia.</p>}</div>
+          <div className="raw-image-card"><div><span>RAW PRODUCT IMAGE</span><b>Foto yang sama untuk Threads & X</b><small>Tanpa frame, overlay, atau template Instagram.</small></div>{result.raw_product_image.reference ? <><img src={result.raw_product_image.reference} alt="Foto RAW produk"/><div className="raw-actions"><button onClick={saveOrShareImage}>{copied === "shared" || copied === "downloaded" ? <Check/> : <Share2/>} {copied === "shared" ? "Siap disimpan" : copied === "downloaded" ? "Terunduh" : "Simpan / Bagikan"}</button><button onClick={copyImage}>{copied === "image" ? <Check/> : <Copy/>} Copy image</button><a href={result.raw_product_image.reference} download target="_blank" rel="noreferrer"><Download/> Download RAW</a><a href={result.raw_product_image.reference} target="_blank" rel="noreferrer"><ExternalLink/> Buka</a></div></> : <p>Foto RAW belum tersedia.</p>}</div>
           <div className="validation-list">{Object.entries(result.validation).map(([key, value]) => { const passed = key === "unresolved_variables" ? !value : value; const label = key === "unresolved_variables" ? "variables resolved" : key.replaceAll("_", " "); return <span className={passed ? "ok" : "bad"} key={key}>{passed ? "✓" : "!"} {label}</span>; })}</div>
         </>}
       </article>
