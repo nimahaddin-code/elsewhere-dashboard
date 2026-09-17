@@ -138,7 +138,7 @@ export default function ContentPlanGenerator({ products, sellingPrice, tripCount
             <Channel title="X" posts={result.x.posts} onCopy={copyText} copied={copied}/>
           </div>
           <div className="raw-image-card"><div><span>RAW PRODUCT IMAGE</span><b>Foto yang sama untuk Threads & X</b><small>Tanpa frame, overlay, atau template Instagram.</small></div>{result.raw_product_image.reference ? <><img src={result.raw_product_image.reference} alt="Foto RAW produk"/><div className="raw-actions"><button onClick={copyImage}>{copied === "image" ? <Check/> : <Copy/>} Copy image</button><a href={result.raw_product_image.reference} download target="_blank" rel="noreferrer"><Download/> Download RAW</a><a href={result.raw_product_image.reference} target="_blank" rel="noreferrer"><ExternalLink/> Buka</a></div></> : <p>Foto RAW belum tersedia.</p>}</div>
-          <div className="validation-list">{Object.entries(result.validation).map(([key, value]) => <span className={value ? "ok" : "bad"} key={key}>{value ? "✓" : "!"} {key.replaceAll("_", " ")}</span>)}</div>
+          <div className="validation-list">{Object.entries(result.validation).map(([key, value]) => { const passed = key === "unresolved_variables" ? !value : value; const label = key === "unresolved_variables" ? "variables resolved" : key.replaceAll("_", " "); return <span className={passed ? "ok" : "bad"} key={key}>{passed ? "✓" : "!"} {label}</span>; })}</div>
         </>}
       </article>
     </div>
