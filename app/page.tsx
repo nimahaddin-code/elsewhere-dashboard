@@ -37,7 +37,7 @@ import OrdersPanel from "../components/orders-panel";
 import { calculatePrice, defaultMargin, isFashion } from "../lib/pricing";
 import { type Order, paidAmount } from "../lib/commerce";
 import { supabaseConfigured } from "../lib/supabase";
-import { activateVariantCombination, cleanOptionValues, getOptionValues, normalizeVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from "../lib/variant-selection.js";
+import { activateVariantCombination, cleanOptionValues, getOptionValues, inferOptionRenames, normalizeVariantOptions, renameVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from "../lib/variant-selection.js";
 const stages = [
   ["Leads", 48, "#dac1c7"],
   ["Waitlist", 36, "#c98e9b"],
@@ -914,6 +914,26 @@ export function Dashboard() {
   const variantDisplayName=(variant:Pick<Variant,'name'|'option1_value'|'option2_value'>) => [variant.option1_value,variant.option2_value].filter(Boolean).join(' / ') || variant.name;
   const parseOptionList=(text:string)=>cleanOptionValues(text.split(/\n|,/).map((value)=>value.trim()).filter(Boolean)) as string[];
   const markEditorDirty=()=>{setEditorDirty(true);setSyncStatus('Ada perubahan yang belum disimpan')};
+  const reconcileOptionRenames=(optionKey:'option1_value'|'option2_value',nextText:string)=>{
+    const nextValues=parseOptionList(nextText);
+    const currentValues=getOptionValues(variants.filter((row)=>row.active!==false),optionKey) as string[];
+    const renames=inferOptionRenames(currentValues,nextValues) as Record<string,string>;
+    if(!Object.keys(renames).length)return;
+    setVariants((rows)=>renameVariantOptions(rows,optionKey,renames) as Variant[]);
+    setOption1Assignments((current)=>{
+      if(optionKey==='option1_value'){
+        const next={...current};
+        for(const [oldValue,newValue] of Object.entries(renames)){
+          if(next[oldValue])next[newValue]=next[oldValue];
+          delete next[oldValue];
+        }
+        return next;
+      }
+      return Object.fromEntries(Object.entries(current).map(([key,assignment])=>[key,{...assignment,selected:cleanOptionValues(assignment.selected.map((value)=>renames[value]??value)) as string[]}])) as typeof current;
+    });
+    if(optionKey==='option1_value')setOpenVariantGroups((current)=>new Set([...current].map((value)=>renames[value]??value)));
+    markEditorDirty();
+  };
   const getOption1Default=(option1:string)=>{
     const activeVariants = variants.filter((row)=>row.active!==false);
     const base = activeVariants.find((row) => row.option1_value === option1) || activeVariants[0];
@@ -1894,8 +1914,8 @@ export function Dashboard() {
                     <label>Pilihan 2 (contoh: Ukuran)<input value={variantProduct.option2_label || ""} placeholder="Ukuran" onChange={e=>updateEditorProduct(variantProduct.id,"option2_label",e.target.value)} onBlur={e=>saveProduct(variantProduct.id,"option2_label",e.target.value.trim() || null)}/></label>
                   </div>
                   <div className="variant-option-settings">
-                    <label>{variantProduct.option1_label || "Pilihan 1"} tersedia<input value={option1ValuesText} onChange={e=>{setOption1ValuesText(e.target.value);markEditorDirty()}} placeholder="Violeta, Serenata" /><small>Pisahkan setiap pilihan dengan koma.</small></label>
-                    <label>{variantProduct.option2_label || "Pilihan 2"} tersedia<input value={option2ValuesText} onChange={e=>{setOption2ValuesText(e.target.value);markEditorDirty()}} placeholder="XXS, XS, S, XL" /><small>Pisahkan setiap pilihan dengan koma.</small></label>
+                    <label>{variantProduct.option1_label || "Pilihan 1"} tersedia<input value={option1ValuesText} onChange={e=>{setOption1ValuesText(e.target.value);markEditorDirty()}} onBlur={e=>reconcileOptionRenames('option1_value',e.target.value)} placeholder="Violeta, Serenata" /><small>Pisahkan setiap pilihan dengan koma. Nama yang diedit akan memperbarui kombinasi lama.</small></label>
+                    <label>{variantProduct.option2_label || "Pilihan 2"} tersedia<input value={option2ValuesText} onChange={e=>{setOption2ValuesText(e.target.value);markEditorDirty()}} onBlur={e=>reconcileOptionRenames('option2_value',e.target.value)} placeholder="XXS, XS, S, XL" /><small>Pisahkan setiap pilihan dengan koma. Nama yang diedit akan memperbarui kombinasi lama.</small></label>
                   </div>
                   <div className="variant-matrix-save">
                     <div><strong>Semua perubahan disimpan bersama</strong><small>Edit kategori, kombinasi, foto, dan detail varian lalu gunakan tombol Simpan yang selalu terlihat.</small></div>

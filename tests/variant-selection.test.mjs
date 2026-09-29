@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activateVariantCombination, cleanOptionValues, getCompatibleOptionValues, findMatchingVariant, getOptionValues, normalizeVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from '../lib/variant-selection.js';
+import { activateVariantCombination, cleanOptionValues, getCompatibleOptionValues, findMatchingVariant, getOptionValues, inferOptionRenames, normalizeVariantOptions, renameVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from '../lib/variant-selection.js';
 
 const variants = [
   { id: 'v1', option1_value: 'Violeta', option2_value: 'XXS' },
@@ -79,6 +79,25 @@ await test('checking an inactive combination reactivates it without losing its d
   const inactive = { id: 'matcha-65', active: false, option1_value: '65g', option2_value: 'Matcha White Chocolate', local_price: 8, photo_url: 'matcha.jpg' };
 
   assert.deepEqual(activateVariantCombination(inactive), { ...inactive, active: true });
+});
+
+await test('editing an option typo renames existing rows without losing IDs or details', () => {
+  const rows = [
+    { id: 'dark-50', option1_value: '50g', option2_value: 'Dark Chocolate', sku: 'DARK-50', local_price: 8, photo_url: 'dark.jpg' },
+    { id: 'milk-50', option1_value: '50g', option2_value: 'Milk Chocolate', sku: 'MILK-50', local_price: 9, photo_url: 'milk.jpg' },
+  ];
+  const option1Renames = inferOptionRenames(['50g'], ['50 gr']);
+  const renamed = renameVariantOptions(rows, 'option1_value', option1Renames);
+
+  assert.deepEqual(option1Renames, { '50g': '50 gr' });
+  assert.deepEqual(renamed.map((row) => [row.id, row.option1_value, row.name, row.sku, row.local_price, row.photo_url]), [
+    ['dark-50', '50 gr', '50 gr / Dark Chocolate', 'DARK-50', 8, 'dark.jpg'],
+    ['milk-50', '50 gr', '50 gr / Milk Chocolate', 'MILK-50', 9, 'milk.jpg'],
+  ]);
+});
+
+await test('reordering option values is not mistaken for a rename', () => {
+  assert.deepEqual(inferOptionRenames(['65g', '150g', '180g'], ['150g', '65g', '180g']), {});
 });
 
 await test('legacy combined names can be matched to a new two-dimension combination', () => {
