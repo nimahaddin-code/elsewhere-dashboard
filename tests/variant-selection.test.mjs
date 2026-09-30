@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activateVariantCombination, cleanOptionValues, getCompatibleOptionValues, findMatchingVariant, getOptionValues, inferOptionRenames, normalizeVariantOptions, renameVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from '../lib/variant-selection.js';
+import { activateVariantCombination, cleanOptionValues, deactivateIncompleteMatrixRows, getCompatibleOptionValues, findMatchingVariant, getOptionValues, getSelectedOptionValues, inferOptionRenames, normalizeVariantOptions, renameVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from '../lib/variant-selection.js';
 
 const variants = [
   { id: 'v1', option1_value: 'Violeta', option2_value: 'XXS' },
@@ -64,6 +64,24 @@ await test('legacy default rows do not become a long option beside a two-dimensi
 
   assert.equal(normalized[0].option1_value, null);
   assert.deepEqual(getOptionValues(normalized, 'option1_value'), ['150g']);
+});
+
+await test('a one-dimensional legacy row is not counted as a combination inside a two-dimensional matrix', () => {
+  const rows = deactivateIncompleteMatrixRows([
+    { id: 'legacy-50', active: true, option1_value: '50g', option2_value: null },
+    { id: 'matcha-50', active: true, option1_value: '50g', option2_value: 'Almond Matcha White Chocolate' },
+    { id: 'cola-50', active: true, option1_value: '50g', option2_value: 'BPOP Cola' },
+    { id: 'lemon-50', active: true, option1_value: '50g', option2_value: 'BPOP Lemon' },
+    { id: 'mint-50', active: true, option1_value: '50g', option2_value: 'BPOP Freshmint' },
+  ]);
+
+  assert.equal(rows.find((row) => row.id === 'legacy-50').active, false);
+  assert.equal(rows.filter((row) => row.active !== false).length, 4);
+});
+
+await test('a new option group starts unchecked until the admin creates combinations', () => {
+  assert.deepEqual(getSelectedOptionValues(undefined), []);
+  assert.deepEqual(getSelectedOptionValues({ selected: ['BPOP Cola', 'BPOP Cola', ' BPOP Lemon '] }), ['BPOP Cola', 'BPOP Lemon']);
 });
 
 await test('inactive choices stay removed when the editor reloads after save', () => {

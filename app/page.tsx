@@ -37,7 +37,7 @@ import OrdersPanel from "../components/orders-panel";
 import { calculatePrice, defaultMargin, isFashion } from "../lib/pricing";
 import { type Order, paidAmount } from "../lib/commerce";
 import { supabaseConfigured } from "../lib/supabase";
-import { activateVariantCombination, cleanOptionValues, getOptionValues, inferOptionRenames, normalizeVariantOptions, renameVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from "../lib/variant-selection.js";
+import { activateVariantCombination, cleanOptionValues, deactivateIncompleteMatrixRows, getOptionValues, getSelectedOptionValues, inferOptionRenames, normalizeVariantOptions, renameVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from "../lib/variant-selection.js";
 const stages = [
   ["Leads", 48, "#dac1c7"],
   ["Waitlist", 36, "#c98e9b"],
@@ -861,7 +861,9 @@ export function Dashboard() {
   const uploadVariantPhoto=async(variant:Variant,file:File)=>{if(!variantProduct)return;setSyncStatus('Mengunggah foto varian…');const ext=file.name.split('.').pop()?.toLowerCase()||'jpg';const path=`${variantProduct.trip_code}/${variantProduct.id}/variants/${variant.id}-${Date.now()}.${ext}`;const{error}=await supabase.storage.from('product-images').upload(path,file,{upsert:false});if(error){setSyncStatus('Gagal mengunggah foto varian');return}const{data}=supabase.storage.from('product-images').getPublicUrl(path);updateVariant(variant.id,'photo_url',data.publicUrl);setSyncStatus('Foto varian siap — klik Simpan untuk menerapkan')};
   const togglePublish=(product:Product)=>{const next=!product.published;if(next&&!(rate>0)){setSyncStatus("Tunggu kurs otomatis sebelum publikasi");return;}setVariantProduct(current=>current?.id===product.id?{...current,published:next,status:next?'Ready':current.status}:current);setEditorDirty(true);setSyncStatus(next?'Status tayang siap — klik Simpan':'Status disembunyikan siap — klik Simpan')};
   const hydrateVariantEditor=(rows:Variant[],product:Product)=>{
-    const normalizedRows = normalizeVariantOptions(rows.map((row,index)=>({...row,__sourceIndex:index})).sort((a,b)=>Number(a.sort_order??a.__sourceIndex)-Number(b.sort_order??b.__sourceIndex))) as Variant[];
+    const normalizedSource = normalizeVariantOptions(rows.map((row,index)=>({...row,__sourceIndex:index})).sort((a,b)=>Number(a.sort_order??a.__sourceIndex)-Number(b.sort_order??b.__sourceIndex))) as Variant[];
+    const normalizedRows = deactivateIncompleteMatrixRows(normalizedSource) as Variant[];
+    const legacyRowsHidden = normalizedSource.some((row,index)=>row.active!==false&&normalizedRows[index]?.active===false);
     const activeRows = normalizedRows.filter((row)=>row.active!==false);
     setVariants(normalizedRows);
     const option1List = getOptionValues(activeRows, 'option1_value') as string[];
@@ -884,7 +886,8 @@ export function Dashboard() {
       };
     }
     setOption1Assignments(nextAssignments);
-    setEditorDirty(false);
+    setEditorDirty(legacyRowsHidden);
+    if(legacyRowsHidden)setSyncStatus('Kombinasi legacy yang tidak lengkap disembunyikan — klik Simpan');
   };
   const openVariants=async(product:Product)=>{setVariantProduct(product);const{data}=await supabase.from('product_variants').select('*').eq('product_id',product.id).order('created_at');hydrateVariantEditor((data||[]) as Variant[],product)};
   const openProductEditor=async(product:Product)=>{
@@ -957,7 +960,7 @@ export function Dashboard() {
           desired.set(`${option1}::`, { option1_value: option1, option2_value: '' });
           continue;
         }
-        const selected = option1Assignments[option1]?.selected ?? option2Values;
+        const selected = getSelectedOptionValues(option1Assignments[option1]) as string[];
         for (const option2 of option2Values.filter((value)=>selected.includes(value))) {
           desired.set(`${option1}::${option2}`, { option1_value: option1, option2_value: option2 });
         }
@@ -1075,17 +1078,6 @@ export function Dashboard() {
       }];
     });
     markEditorDirty();
-  };
-  const applyVariantGroupDefaults=(option1:string,assignment:{selected:string[];price:number;weight_grams:number;photo_url:string;sale_mode:"stock"|"preorder";preorder_capacity:number|null})=>{
-    setVariants((rows)=>rows.map((row)=>row.active!==false&&(row.option1_value||'')===option1&&(!row.option2_value||assignment.selected.includes(row.option2_value))?{
-      ...row,
-      local_price:Number(assignment.price||0),
-      weight_grams:Number(assignment.weight_grams||0),
-      photo_url:assignment.photo_url||'',
-      sale_mode:assignment.sale_mode,
-    }:row));
-    markEditorDirty();
-    setSyncStatus(`Pengaturan ${option1||'varian'} diterapkan — klik Simpan`);
   };
   const deleteVariant=(id:string)=>{setVariants(rows=>rows.filter(row=>row.id!==id));setDeletedVariantIds(current=>new Set(current).add(id));setEditorDirty(true);setSyncStatus('Varian akan dihapus setelah klik Simpan')};
   const addCategory=async()=>{
@@ -1922,7 +1914,7 @@ export function Dashboard() {
                   </div>
                   <div className="variant-matrix-editor">
                     {(parseOptionList(option1ValuesText).length ? parseOptionList(option1ValuesText) : ['']).map((option1) => {
-                      const assignment = option1Assignments[option1] ?? { selected: parseOptionList(option2ValuesText), price: Number(variantProduct.local_price || 0), weight_grams: Number(variantProduct.weight_grams || 0), photo_url: variantProduct.photo_url || '', sale_mode: 'preorder' as const, preorder_capacity: null };
+                      const assignment = option1Assignments[option1] ?? { selected: [] as string[], price: Number(variantProduct.local_price || 0), weight_grams: Number(variantProduct.weight_grams || 0), photo_url: variantProduct.photo_url || '', sale_mode: 'preorder' as const, preorder_capacity: null };
                       const option1Variants = variants.filter((row) => row.active!==false && (option1 ? row.option1_value === option1 : !row.option1_value));
                       const groupOpen = openVariantGroups.has(option1);
                       const groupTitle = option1 || (parseOptionList(option2ValuesText).length ? (variantProduct.option2_label || 'Pilihan') : 'Varian default');
@@ -1931,14 +1923,7 @@ export function Dashboard() {
                           <button type="button" aria-expanded={groupOpen} onClick={()=>setOpenVariantGroups(current=>{const next=new Set(current);if(next.has(option1))next.delete(option1);else next.add(option1);return next})}>{groupOpen?<ChevronDown size={17}/>:<ChevronRight size={17}/>}<span><strong>{groupTitle}</strong><small>{option1Variants.length} kombinasi</small></span></button>
                         </div>
                         {groupOpen&&<>
-                        {option1&&<div className="variant-matrix-checklist">{parseOptionList(option2ValuesText).map((option2) => <label key={`${option1}-${option2}`}><input type="checkbox" checked={assignment.selected.includes(option2)} onChange={(event) => toggleVariantCombination(option1,option2,event.target.checked,assignment)} />{option2}</label>)}</div>}
-                        <div className="variant-matrix-fields">
-                          <label>Harga grup {currency}<input type="number" value={assignment.price || ""} onChange={(event) => {setOption1Assignments((current) => ({ ...current, [option1]: { ...assignment, price: Number(event.target.value || 0) } }));markEditorDirty()}} /></label>
-                          <label>Berat grup (gram)<input type="number" value={assignment.weight_grams || ""} onChange={(event) => {setOption1Assignments((current) => ({ ...current, [option1]: { ...assignment, weight_grams: Number(event.target.value || 0) } }));markEditorDirty()}} /></label>
-                          <label>Foto grup<input type="url" value={assignment.photo_url || ""} onChange={(event) => {setOption1Assignments((current) => ({ ...current, [option1]: { ...assignment, photo_url: event.target.value } }));markEditorDirty()}} placeholder="https://…" /></label>
-                          <label>Penjualan grup<select value={assignment.sale_mode} onChange={(event) => {setOption1Assignments((current) => ({ ...current, [option1]: { ...assignment, sale_mode: event.target.value as 'stock' | 'preorder' } }));markEditorDirty()}}><option value="preorder">Preorder</option><option value="stock">Ready stock</option></select></label>
-                        </div>
-                        <div className="variant-group-actions"><small>Isi pengaturan grup lalu terapkan sekaligus ke semua kombinasi yang dicentang.</small><button type="button" onClick={()=>applyVariantGroupDefaults(option1,assignment)}>Terapkan ke {option1Variants.length} kombinasi</button></div>
+                        {option1&&<><div className="variant-matrix-checklist">{parseOptionList(option2ValuesText).map((option2) => <label key={`${option1}-${option2}`}><input type="checkbox" checked={assignment.selected.includes(option2)} onChange={(event) => toggleVariantCombination(option1,option2,event.target.checked,assignment)} />{option2}</label>)}</div><small className="variant-combination-help">Centang untuk menampilkan kombinasi. Lepas centang untuk menyembunyikannya; detail lama tetap tersedia jika dicentang lagi.</small></>}
                         {option1Variants.length > 0 ? (
                           <div className="variant-matrix-rows">
                             {option1Variants.map((v) => (

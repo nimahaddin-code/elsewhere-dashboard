@@ -624,4 +624,32 @@ await test('verified paid dummy orders require cancel and return before permanen
   await db.query('select commerce_delete_order($1)', [id]);
   assert.equal((await db.query('select count(*)::int as n from orders where id=$1', [id])).rows[0].n, 0);
 });
+await test('editors can explicitly delete any order status and its ledger children after the cleanup migration', async () => {
+  await owner();
+  const records = [];
+  for (const [index, status] of ['new', 'completed'].entries()) {
+    const id = crypto.randomUUID();
+    const item = crypto.randomUUID();
+    const payment = crypto.randomUUID();
+    await db.query(`insert into orders(id,request_id,order_code,trip_code,customer_name,phone,address,total_idr,status,courier,tracking_number)
+      values($1,$2,$3,'TRIP-001','Cleanup Customer','628333333333','Jalan Cleanup 123',100000,$4,'JNE','TRACK-1')`, [id, crypto.randomUUID(), `EW-CLEANUP-${index}`, status]);
+    await db.query(`insert into order_items(id,order_id,product_id,variant_id,product_name,variant_name,quantity,unit_price_idr,sale_mode,pricing_snapshot)
+      values($1,$2,$3,$4,'Test Bag','M',1,100000,'preorder','{}'::jsonb)`, [item, id, product, variant]);
+    await db.query(`insert into order_payments(id,request_id,order_id,amount_idr,reference,verified_at,verified_by,created_by)
+      values($1,$2,$3,100000,'Cleanup payment',now(),$4,$4)`, [payment, crypto.randomUUID(), id, member]);
+    records.push({ id, item, payment });
+  }
+  await role('authenticated', member, 'team@example.com');
+  await assert.rejects(db.query('select commerce_delete_order($1)', [records[0].id]), /sudah dibatalkan/);
+
+  await owner();
+  await db.exec(await readFile(new URL('../supabase/migrations/202609290003_delete_any_order.sql', import.meta.url), 'utf8'));
+  await role('authenticated', member, 'team@example.com');
+  for (const record of records) {
+    await db.query('select commerce_delete_order($1)', [record.id]);
+    assert.equal((await db.query('select count(*)::int as n from orders where id=$1', [record.id])).rows[0].n, 0);
+    assert.equal((await db.query('select count(*)::int as n from order_items where id=$1', [record.item])).rows[0].n, 0);
+    assert.equal((await db.query('select count(*)::int as n from order_payments where id=$1', [record.payment])).rows[0].n, 0);
+  }
+});
 await db.close();

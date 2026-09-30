@@ -184,7 +184,6 @@ function OrderDetail({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [confirmAction, setConfirmAction] = useState<'cancelled' | 'return' | 'delete' | null>(null);
-  const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
   const [productPhoto, setProductPhoto] = useState<File | null>(null);
   const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
   const [productPhotoPreview, setProductPhotoPreview] = useState<string | null>(null);
@@ -693,16 +692,13 @@ function OrderDetail({
                   ? 'Batalkan order tanpa pembayaran terverifikasi ini?'
                   : confirmAction === 'return'
                     ? 'Tandai order sebagai Cancel & Return? Pastikan refund/pengembalian sudah ditangani.'
-                    : deleteStep === 1
-                      ? 'Hapus order terminal ini beserta seluruh item dan catatan pembayarannya?'
-                      : `Konfirmasi terakhir: hapus permanen ${order.order_code}?`}</span>
+                    : `Hapus permanen ${order.order_code} beserta seluruh item dan catatan pembayarannya?`}</span>
                 <div>
                   <button
                     type="button"
                     className="danger-button"
                     disabled={busy}
                     onClick={() => {
-                      if(confirmAction === 'delete' && deleteStep === 1){setDeleteStep(2);return}
                       void action(async () => {
                         if (confirmAction === 'delete') {
                           await rpc('commerce_delete_order', { p_order_id: order.id });
@@ -716,23 +712,23 @@ function OrderDetail({
                       });
                     }}
                   >
-                    {confirmAction === 'cancelled' ? 'Ya, batalkan' : confirmAction === 'return' ? 'Ya, cancel & return' : deleteStep === 1 ? 'Lanjut hapus' : 'Hapus permanen'}
+                    {confirmAction === 'cancelled' ? 'Ya, batalkan' : confirmAction === 'return' ? 'Ya, cancel & return' : 'Hapus permanen'}
                   </button>
-                  <button type="button" onClick={() => {setConfirmAction(null);setDeleteStep(1)}}>
+                  <button type="button" onClick={() => setConfirmAction(null)}>
                     Batal
                   </button>
                 </div>
               </div>
-            ) : order.status === 'cancelled' ? (
+            ) : (
               <button
                 type="button"
                 className="mini-delete-button"
-                onClick={() => {setDeleteStep(1);setConfirmAction('delete')}}
+                onClick={() => setConfirmAction('delete')}
                 aria-label="Hapus order"
               >
-                Hapus permanen
+                Hapus order
               </button>
-            ) : null}
+            )}
           </div>
         </section>
       </div>
