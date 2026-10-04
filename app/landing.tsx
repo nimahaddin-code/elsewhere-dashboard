@@ -130,7 +130,7 @@ export default function Landing() {
         <div className="hero-visual" aria-label="Pilihan produk dari Kuala Lumpur">
           {items.slice(0, 3).map((product, index) => (
             <div className={`hero-product hero-product-${index + 1}`} key={product.id}>
-              <ProductPhoto product={product} variant={product.product_variants?.[0]} alt="" />
+              <ProductPhoto product={product} variant={product.product_variants?.[0]} preferProduct alt="" />
             </div>
           ))}
           <span className="hero-visual-label">KUALA LUMPUR<br /><b>FIELD NOTES 01</b></span>
@@ -165,7 +165,7 @@ export default function Landing() {
               return (
                 <article className="product-card" data-tone={categoryTone(p.category)} key={p.id}>
                   <div className="product-photo">
-                    <ProductPhoto key={`${p.id}-${v?.id || 'default'}`} product={p} variant={v} alt={`${p.name}${v ? ` — ${v.name}` : ''}`}/>
+                    <ProductPhoto key={`${p.id}-${v?.id || 'default'}`} product={p} variant={v} preferProduct alt={p.name}/>
 
                   </div>
                   <div className="product-copy">
