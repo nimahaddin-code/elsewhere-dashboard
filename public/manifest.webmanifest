@@ -1,0 +1,17 @@
+{
+  "name": "Elsewhere & Co. Dashboard",
+  "short_name": "Elsewhere",
+  "description": "Workspace bersama Elsewhere & Co. untuk katalog, trip, pesanan, dan konten.",
+  "id": "/dashboard",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#faf8f4",
+  "theme_color": "#543849",
+  "categories": ["business", "productivity", "shopping"],
+  "icons": [
+    { "src": "/app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
