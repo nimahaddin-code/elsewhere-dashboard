@@ -29,7 +29,7 @@ import { supabase } from "../lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import Landing from "./landing";
 import ProductPhoto from "../components/product-photo";
-import CatalogueImageGenerator from "../components/catalogue-image-generator";
+import CatalogueImageGenerator from "../components/catalogue-image-generator-v2";
 import ContentPlanGenerator from "../components/content-plan-generator";
 import "./catalogue-dashboard.css";
 import { filterCatalogue, catalogueCategoryNames, type CatalogueStatus } from "../lib/catalogue-search";
