@@ -653,3 +653,9 @@ await test('editors can explicitly delete any order status and its ledger childr
   }
 });
 await db.close();
+
+test('calculatePrice adds optional flat fee before rounding', () => {
+  const base = { localPrice: 200, grams: 0, category: 'Pakaian', margin: 25, rate: 3700, fashionCargo: 0, otherCargo: 0 };
+  assert.equal(calculatePrice(base).sell, 925000);
+  assert.equal(calculatePrice({ ...base, flatFee: 5000 }).sell, 930000);
+});

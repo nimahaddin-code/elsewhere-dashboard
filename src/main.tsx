@@ -8,6 +8,10 @@ const Page = window.location.pathname.startsWith('/dashboard') || !supabaseConfi
   ? lazy(() => import('../app/page'))
   : lazy(() => import('../app/landing'));
 
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Suspense fallback={<main className="auth-screen" role="status">Memuat Elsewhere…</main>}>

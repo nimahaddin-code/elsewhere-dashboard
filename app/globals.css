@@ -2056,3 +2056,35 @@ main {
   .qris-panel img, .qris-missing { width: min(100%, 330px); height: auto; max-height: 430px; }
   .cart-feedback { top: 105px; right: 15px; max-width: calc(100% - 30px); }
 }
+
+/* Price calculator */
+.pc{max-width:560px;margin:0 auto;padding:22px 16px 40px}
+.pc-head span{color:var(--rose);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.pc-head h2{margin:4px 0 6px;font:28px Georgia,serif;color:var(--ink)}
+.pc-head p{margin:0 0 16px;color:var(--muted);font-size:13px;line-height:1.5}
+.pc-rate{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:12px 14px;border-radius:12px;background:var(--blush);margin-bottom:14px}
+.pc-rate span{color:var(--muted);font-size:12px}.pc-rate b{color:var(--plum);font-size:15px}.pc-rate small{margin-left:auto;color:var(--muted);font-size:12px}
+.pc-form{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.pc-form label{display:grid;gap:5px;color:var(--muted);font-size:12px;font-weight:600}
+.pc-form .pc-wide{grid-column:1/-1}
+.pc-form input,.pc-form select{width:100%;height:46px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:0 12px;color:var(--ink);font-size:16px}
+.pc-result{display:grid;gap:4px;padding:18px;border-radius:16px;background:var(--plum);color:#fff;margin-bottom:14px}
+.pc-result span{font-size:12px;opacity:.8}.pc-result strong{font:34px Georgia,serif}.pc-result p{margin:0;font-size:13px;opacity:.9}
+.pc-result button{margin-top:8px;height:42px;border:0;border-radius:10px;background:#fff;color:var(--plum);font-weight:700;font-size:14px}
+.pc-result button:disabled{opacity:.5}
+.pc-lines{margin:0;padding:6px 16px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.pc-lines>div{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.pc-lines>div:last-child{border-bottom:0}.pc-lines dt{color:var(--muted)}.pc-lines dd{margin:0;font-weight:600}
+.pc-lines .pc-sub dt,.pc-lines .pc-sub dd{color:var(--ink);font-weight:700}
+
+/* iPhone app-style bottom tab bar (small screens only) */
+.tabbar{display:none}
+@media (max-width:760px){
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:15;display:grid;grid-template-columns:repeat(4,1fr);background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+  .tabbar button{display:grid;justify-items:center;gap:3px;border:0;background:none;padding:6px 0;color:var(--muted);font-size:10px;font-weight:600}
+  .tabbar button.active{color:var(--plum)}
+  body{padding-bottom:calc(64px + env(safe-area-inset-bottom));-webkit-tap-highlight-color:transparent}
+  .topbar{padding-top:max(0px,env(safe-area-inset-top))}
+  input,select,textarea{font-size:16px}
+}
+@media (display-mode:standalone){body{overscroll-behavior-y:none}}

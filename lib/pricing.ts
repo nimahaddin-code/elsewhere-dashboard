@@ -13,13 +13,15 @@ export function calculatePrice(input: {
   rate: number;
   fashionCargo: number;
   otherCargo: number;
+  flatFee?: number;
 }) {
+  const flatFee = input.flatFee ?? 0;
   const margin = input.margin ?? defaultMargin(input.category);
   const cargoRate = isFashion(input.category)
     ? input.fashionCargo
     : input.otherCargo;
   const valid =
-    [input.localPrice, input.grams, margin, cargoRate].every(
+    [input.localPrice, input.grams, margin, cargoRate, flatFee].every(
       (n) => Number.isFinite(n) && n >= 0,
     ) &&
     Number.isFinite(input.rate) &&
@@ -31,6 +33,7 @@ export function calculatePrice(input: {
   const capital = productCost.add(cargo);
   const sell = capital
     .mul(new Decimal(margin).div(100).add(1))
+    .add(flatFee)
     .div(1000).ceil().mul(1000);
   return {
     productCost: productCost.toNumber(),

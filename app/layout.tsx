@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Elsewhere & Co. — Jastip Control Center',
-  description: 'International jastip operations, sales, demand, and trip dashboard.',
+  title: 'Elsewhere & Co. — Jastip Asia',
+  description: 'Jastip Asia — international jastip catalogue by Elsewhere & Co.',
 };
 
 export default function RootLayout({
