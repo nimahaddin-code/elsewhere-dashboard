@@ -2,16 +2,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  BarChart3,
-  Bell,
   Calculator,
+  ListChecks,
   CalendarDays,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
   Copy,
-  ClipboardList,
   LayoutDashboard,
   MapPinned,
   Menu,
@@ -23,7 +20,6 @@ import {
   ShoppingBag,
   Sparkles,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -35,29 +31,13 @@ import ContentPlanGenerator from "../components/content-plan-generator";
 import "./catalogue-dashboard.css";
 import { filterCatalogue, catalogueCategoryNames, type CatalogueStatus } from "../lib/catalogue-search";
 import OrdersPanel from "../components/orders-panel";
+import TripTasks from "../components/trip-tasks";
+import ItineraryPanel from "../components/itinerary-panel";
 import { PriceCalculator } from "../components/price-calculator";
 import { calculatePrice, defaultMargin, isFashion } from "../lib/pricing";
 import { type Order, paidAmount } from "../lib/commerce";
 import { supabaseConfigured } from "../lib/supabase";
 import { activateVariantCombination, cleanOptionValues, deactivateIncompleteMatrixRows, getOptionValues, getSelectedOptionValues, inferOptionRenames, normalizeVariantOptions, renameVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from "../lib/variant-selection.js";
-const stages = [
-  ["Leads", 48, "#dac1c7"],
-  ["Waitlist", 36, "#c98e9b"],
-  ["Hot leads", 21, "#a96174"],
-  ["Paid", 14, "#624153"],
-];
-const products = [
-  ["Gentlewoman tote", "Bags", "18", "Rp850k", "High"],
-  ["Butterbear merch", "Character", "14", "Rp450k", "High"],
-  ["Pipatchara bag", "Bags", "11", "Rp2.4jt", "Medium"],
-  ["Thai beauty minis", "Beauty", "9", "Rp280k", "Medium"],
-];
-const leads = [
-  ["Alya Putri", "Gentlewoman tote", "Invoice sent", "Rp1.240.000", "Hari ini"],
-  ["Keisya A.", "Butterbear bundle", "Hot lead", "Rp680.000", "Follow up"],
-  ["Nadya K.", "Pipatchara Amu", "Deposit paid", "Rp2.850.000", "Confirmed"],
-  ["Celine M.", "Beauty minis", "Waitlist", "Rp420.000", "Besok"],
-];
 type Expense = {
   id: string | number;
   category: string;
@@ -233,7 +213,7 @@ export function Dashboard() {
   const [recoveryMode,setRecoveryMode]=useState(false);
   const [newPassword,setNewPassword]=useState("");
   const [syncStatus, setSyncStatus] = useState("Menunggu login");
-  const [view, setView] = useState<"dashboard" | "trip" | "catalogue" | "product" | "orders" | "content" | "calculator">(
+  const [view, setView] = useState<"dashboard" | "trip" | "catalogue" | "product" | "orders" | "content" | "calculator" | "itinerary">(
     "dashboard",
   );
   const scrollPositions = useRef<Record<string, number>>({
@@ -253,7 +233,7 @@ export function Dashboard() {
     }));
   };
   const switchView = (
-    next: "dashboard" | "trip" | "catalogue" | "orders" | "content" | "calculator",
+    next: "dashboard" | "trip" | "catalogue" | "orders" | "content" | "calculator" | "itinerary",
   ) => {
     if (view !== "product") {
       scrollPositions.current[view] = window.scrollY;
@@ -354,13 +334,6 @@ export function Dashboard() {
   const [itemBaht, setItemBaht] = useState(200);
   const [itemGrams, setItemGrams] = useState(350);
   const [baseMargin, setBaseMargin] = useState(25);
-  const [tasks, setTasks] = useState([
-    { text: "Publish 4 Threads + 4 X posts", done: false, tag: "Content" },
-    { text: "Follow up 7 hot leads", done: false, tag: "Sales" },
-    { text: "Confirm price range Gentlewoman", done: true, tag: "Product" },
-    { text: "Test waitlist form end-to-end", done: false, tag: "Launch" },
-  ]);
-  const done = tasks.filter((t) => t.done).length;
   const activeTrip = trips.find((t) => t.code === activeTripCode);
   const rate = rateDraft?.trip === activeTripCode ? rateDraft.value : 0;
   const setRate = (value: number) => setRateDraft({ trip: activeTripCode, value });
@@ -426,7 +399,7 @@ export function Dashboard() {
       const saved = sessionStorage.getItem("elsewhere-dashboard-state");
       if (saved) {
         const parsed = JSON.parse(saved) as { view?: string; activeTripCode?: string; scrollY?: number; scrollPositions?: Record<string, number> };
-        if (parsed.view && ["dashboard", "trip", "catalogue", "orders", "calculator"].includes(parsed.view)) setView(parsed.view as typeof view);
+        if (parsed.view && ["dashboard", "trip", "catalogue", "orders", "calculator", "itinerary"].includes(parsed.view)) setView(parsed.view as typeof view);
         if (parsed.activeTripCode) setActiveTripCode(parsed.activeTripCode);
         if (parsed.scrollPositions) Object.assign(scrollPositions.current, parsed.scrollPositions);
         if (typeof parsed.scrollY === "number") {
@@ -1352,10 +1325,6 @@ export function Dashboard() {
             <Calculator />
             Kalkulator harga
           </a>
-          <a>
-            <Users />
-            Leads & waitlist <em>48</em>
-          </a>
           <a href="/dashboard" className={view === "orders" ? "active" : ""} onClick={e => { e.preventDefault(); switchView("orders"); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); }}>
             <ShoppingBag /> Orders <em>{currentOrders.length}</em>
           </a>
@@ -1384,18 +1353,22 @@ export function Dashboard() {
             <MapPinned />
             Trips <em>{String(trips.length).padStart(3, "0")}</em>
           </a>
+          <a
+            className={view === "itinerary" ? "active" : ""}
+            onClick={() => {
+              switchView("itinerary");
+              setVariantProduct(null);
+              window.history.pushState({}, "", "/dashboard");
+              setNav(false);
+            }}
+          >
+            <ListChecks />
+            Itinerary
+          </a>
           <p>Growth</p>
           <a className={view === "content" ? "active" : ""} onClick={() => { switchView("content"); setVariantProduct(null); window.history.pushState({}, "", "/dashboard/content"); setNav(false); }}>
             <CalendarDays />
             Content plan
-          </a>
-          <a>
-            <BarChart3 />
-            Performance
-          </a>
-          <a>
-            <ClipboardList />
-            Launch checklist
           </a>
         </nav>
         <div className="trip-card">
@@ -1434,7 +1407,7 @@ export function Dashboard() {
         </div>
       </aside>
       <nav className="tabbar" aria-label="Menu utama">
-        {([["dashboard", "Home", LayoutDashboard], ["orders", "Orders", ShoppingBag], ["calculator", "Hitung", Calculator], ["catalogue", "Katalog", PackageSearch]] as const).map(([key, label, Icon]) => (
+        {([["dashboard", "Home", LayoutDashboard], ["orders", "Orders", ShoppingBag], ["itinerary", "Rute", ListChecks], ["calculator", "Hitung", Calculator], ["catalogue", "Katalog", PackageSearch]] as const).map(([key, label, Icon]) => (
           <button key={key} className={view === key || (key === "catalogue" && view === "product") ? "active" : ""} onClick={() => { switchView(key); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); window.scrollTo(0, 0); }}>
             <Icon size={21} />
             {label}
@@ -1451,17 +1424,6 @@ export function Dashboard() {
             <h1>Good morning, Ni'mah.</h1>
           </div>
           <div className="top-actions">
-            <label>
-              <Search size={17} />
-              <input placeholder="Search anything…" />
-            </label>
-            <button className="icon-btn">
-              <Bell size={19} />
-              <i />
-            </button>
-            <button className="primary">
-              <Plus size={18} /> Add lead
-            </button>
             <button
               className="logout-btn"
               onClick={() => supabase.auth.signOut()}
@@ -1472,7 +1434,7 @@ export function Dashboard() {
         </header>
         <div className="commerce-trip-bar"><label>Trip aktif <select value={activeTripCode} onChange={e => { setActiveTripCode(e.target.value); setVariantProduct(null); if(view === "product") switchView("catalogue"); }}>{trips.map(t => <option key={t.code} value={t.code}>{t.name} · {t.code}</option>)}</select></label><a href="/" target="_blank" rel="noreferrer">Lihat katalog ↗</a><output>{syncStatus}</output></div>
         {commerceError && <p role="alert" className="commerce-error">{commerceError}</p>}
-        {view === "calculator" ? <PriceCalculator country={activeTrip?.country || "Malaysia"} currency={currency} symbol={currencySymbol} rate={rate} fashionCargo={Number(activeTrip?.fashion_cargo_per_kg) || cargoRate} otherCargo={Number(activeTrip?.nonfashion_cargo_per_kg) || otherCargoRate} categories={categories}/> : view === "content" ? <ContentPlanGenerator products={catalogue} tripCountry={activeTrip?.country} sellingPrice={(product, variant) => productPricing({ local_price: variant?.local_price ?? product.local_price, price_thb: variant?.local_price ?? product.price_thb, weight_grams: variant?.weight_grams ?? product.weight_grams, category: product.category, margin_percent: product.margin_percent }).sell}/> : view === "orders" ? <OrdersPanel key={activeTripCode} tripCode={activeTripCode} onChange={() => setCommerceRevision(n => n + 1)}/> : view === "trip" ? (
+        {view === "itinerary" ? <ItineraryPanel tripCode={activeTripCode} tripName={activeTrip?.name} departureDate={activeTrip?.departure_date}/> : view === "calculator" ? <PriceCalculator country={activeTrip?.country || "Malaysia"} currency={currency} symbol={currencySymbol} rate={rate} fashionCargo={Number(activeTrip?.fashion_cargo_per_kg) || cargoRate} otherCargo={Number(activeTrip?.nonfashion_cargo_per_kg) || otherCargoRate} categories={categories}/> : view === "content" ? <ContentPlanGenerator products={catalogue} tripCountry={activeTrip?.country} sellingPrice={(product, variant) => productPricing({ local_price: variant?.local_price ?? product.local_price, price_thb: variant?.local_price ?? product.price_thb, weight_grams: variant?.weight_grams ?? product.weight_grams, category: product.category, margin_percent: product.margin_percent }).sell}/> : view === "orders" ? <OrdersPanel key={activeTripCode} tripCode={activeTripCode} onChange={() => setCommerceRevision(n => n + 1)}/> : view === "trip" ? (
           <section className="trip-workspace">
             <div className="trip-switcher">
               <label>
@@ -2294,25 +2256,6 @@ export function Dashboard() {
           </section>
         ) : (
           <>
-            <section className="phase-banner">
-              <div>
-                <span>Current phase</span>
-                <strong>Demand validation</strong>
-                <p>
-                  Collect 25+ product requests and identify repeated buyer pain
-                  points.
-                </p>
-              </div>
-              <div className="phase-progress">
-                <span>
-                  <b>Day 1</b> of 61
-                </span>
-                <div>
-                  <i />
-                </div>
-                <small>Next milestone: Audience building · 13 Sep</small>
-              </div>
-            </section>
             <section className="metrics">
               <Metric label="Pesanan masuk" value={commerceError ? "—" : String(currentOrders.length)} note="Pesanan dari katalog"/>
               <Metric label="Order dengan pembayaran" value={commerceError ? "—" : String(confirmedOrders)} note="DP atau pelunasan terverifikasi"/>
@@ -2487,125 +2430,7 @@ export function Dashboard() {
               </div>
             </section>
             <section className="grid-two">
-              <article className="panel funnel">
-                <div className="panel-head">
-                  <div>
-                    <span>Sales funnel</span>
-                    <h2>Contoh funnel pemasaran</h2><p>Data ilustrasi, belum terhubung ke transaksi.</p>
-                  </div>
-                  <button>
-                    View leads <ChevronRight size={15} />
-                  </button>
-                </div>
-                <div className="funnel-chart">
-                  {stages.map((s, i) => (
-                    <div className="funnel-row" key={s[0]}>
-                      <span>{s[0]}</span>
-                      <div>
-                        <i
-                          style={{
-                            width: (Number(s[1]) / 48) * 100 + "%",
-                            background: String(s[2]),
-                          }}
-                        />
-                      </div>
-                      <b>{s[1]}</b>
-                      <small>
-                        {i
-                          ? Math.round(
-                              (Number(s[1]) / Number(stages[i - 1][1])) * 100,
-                            ) + "%"
-                          : "100%"}
-                      </small>
-                    </div>
-                  ))}
-                </div>
-                <div className="insight">
-                  <Sparkles size={17} />
-                  <p>
-                    <b>Main opportunity:</b> 15 waitlist members haven’t become
-                    hot leads. Send the catalogue teaser and ask for their
-                    maximum budget.
-                  </p>
-                </div>
-              </article>
-              <article className="panel tasks">
-                <div className="panel-head">
-                  <div>
-                    <span>Action center</span>
-                    <h2>Checklist contoh</h2><p>Centang belum disimpan ke database.</p>
-                  </div>
-                  <small>
-                    {done}/{tasks.length} done
-                  </small>
-                </div>
-                <div className="task-progress">
-                  <i style={{ width: (done / tasks.length) * 100 + "%" }} />
-                </div>
-                <div className="task-list">
-                  {tasks.map((t, i) => (
-                    <button
-                      key={t.text}
-                      className={t.done ? "done" : ""}
-                      onClick={() =>
-                        setTasks((a) =>
-                          a.map((v, n) =>
-                            n === i ? { ...v, done: !v.done } : v,
-                          ),
-                        )
-                      }
-                    >
-                      <span className="check">
-                        {t.done ? <CheckCircle2 /> : <i />}
-                      </span>
-                      <span>
-                        {t.text}
-                        <small>{t.tag}</small>
-                      </span>
-                      <ChevronRight />
-                    </button>
-                  ))}
-                </div>
-                <button className="add-task">
-                  <Plus size={16} /> Add task
-                </button>
-              </article>
-            </section>
-            <section className="grid-lower">
-              <article className="panel products">
-                <div className="panel-head">
-                  <div>
-                    <span>Demand intelligence</span>
-                    <h2>Contoh permintaan produk</h2><p>Data ilustrasi, bukan laporan pesanan.</p>
-                  </div>
-                  <button>
-                    See all <ChevronRight size={15} />
-                  </button>
-                </div>
-                <div className="table">
-                  <div className="tr th">
-                    <span>Product</span>
-                    <span>Requests</span>
-                    <span>Avg budget</span>
-                    <span>Priority</span>
-                  </div>
-                  {products.map((p) => (
-                    <div className="tr" key={p[0]}>
-                      <span>
-                        <b>{p[0]}</b>
-                        <small>{p[1]}</small>
-                      </span>
-                      <span>{p[2]}</span>
-                      <span>{p[3]}</span>
-                      <span>
-                        <em className={"badge " + p[4].toLowerCase()}>
-                          {p[4]}
-                        </em>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </article>
+              <TripTasks tripCode={activeTripCode}/>
               <article className="panel capacity">
                 <div className="panel-head">
                   <div>
@@ -2639,44 +2464,6 @@ export function Dashboard() {
                   />
                 </label>
               </article>
-            </section>
-            <section className="panel leads">
-              <div className="panel-head">
-                <div>
-                  <span>Sales pipeline</span>
-                  <h2>Leads needing attention</h2>
-                </div>
-                <button>
-                  Open CRM <ChevronRight size={15} />
-                </button>
-              </div>
-              <div className="lead-table">
-                <div className="lead-row head">
-                  <span>Customer</span>
-                  <span>Request</span>
-                  <span>Stage</span>
-                  <span>Potential value</span>
-                  <span>Next action</span>
-                </div>
-                {leads.map((l, i) => (
-                  <div className="lead-row" key={l[0]}>
-                    <span>
-                      <i className={"avatar a" + i}>{l[0][0]}</i>
-                      <b>{l[0]}</b>
-                    </span>
-                    <span>{l[1]}</span>
-                    <span>
-                      <em className="status">{l[2]}</em>
-                    </span>
-                    <span>
-                      <b>{l[3]}</b>
-                    </span>
-                    <span className={l[4] === "Hari ini" ? "urgent" : ""}>
-                      {l[4]}
-                    </span>
-                  </div>
-                ))}
-              </div>
             </section>
           </>
         )}
