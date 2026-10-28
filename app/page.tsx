@@ -1407,7 +1407,7 @@ export function Dashboard() {
         </div>
       </aside>
       <nav className="tabbar" aria-label="Menu utama">
-        {([["dashboard", "Home", LayoutDashboard], ["orders", "Orders", ShoppingBag], ["itinerary", "Rute", ListChecks], ["calculator", "Hitung", Calculator], ["catalogue", "Katalog", PackageSearch]] as const).map(([key, label, Icon]) => (
+        {([["dashboard", "Home", LayoutDashboard], ["orders", "Orders", ShoppingBag], ["itinerary", "Itinerary", ListChecks], ["calculator", "Hitung", Calculator], ["catalogue", "Katalog", PackageSearch]] as const).map(([key, label, Icon]) => (
           <button key={key} className={view === key || (key === "catalogue" && view === "product") ? "active" : ""} onClick={() => { switchView(key); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); window.scrollTo(0, 0); }}>
             <Icon size={21} />
             {label}
