@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, MapPin, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, CheckCircle2, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 type Shop = { id: string; name: string; items: string; done: boolean };
@@ -20,6 +20,10 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
   const [day, setDay] = useState(1);
   const [place, setPlace] = useState("");
   const [note, setNote] = useState("");
+  const [editingStop, setEditingStop] = useState<string | null>(null);
+  const [stopDraft, setStopDraft] = useState({ day: 1, place: "", note: "" });
+  const [editingShop, setEditingShop] = useState<string | null>(null);
+  const [shopEdit, setShopEdit] = useState({ name: "", items: "" });
   const [shopDrafts, setShopDrafts] = useState<Record<string, { name: string; items: string }>>({});
 
   const load = async () => {
@@ -64,6 +68,37 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
     await load();
   };
 
+  const startEditStop = (stop: Stop) => {
+    setEditingStop(stop.id);
+    setStopDraft({ day: stop.day, place: stop.place, note: stop.note });
+  };
+
+  const saveStop = async (stop: Stop) => {
+    const name = stopDraft.place.trim();
+    if (!name) return;
+    const patch: Record<string, unknown> = { place: name, note: stopDraft.note.trim() };
+    if (stopDraft.day !== stop.day) {
+      patch.day = stopDraft.day;
+      patch.position = stops.filter((s) => s.day === stopDraft.day).length;
+    }
+    const { error: err } = await supabase.from("trip_itinerary_stops").update(patch).eq("id", stop.id);
+    if (err) setError("Gagal menyimpan");
+    setEditingStop(null);
+    await load();
+  };
+
+  const moveStop = async (list: Stop[], index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= list.length) return;
+    const order = [...list];
+    [order[index], order[target]] = [order[target], order[index]];
+    const results = await Promise.all(
+      order.map((s, i) => supabase.from("trip_itinerary_stops").update({ position: i }).eq("id", s.id)),
+    );
+    if (results.some((r) => r.error)) setError("Gagal mengubah urutan");
+    await load();
+  };
+
   const saveShops = async (stop: Stop, shops: Shop[]) => {
     setStops((all) => all.map((s) => (s.id === stop.id ? { ...s, shops } : s)));
     const { error: err } = await supabase.from("trip_itinerary_stops").update({ shops }).eq("id", stop.id);
@@ -99,24 +134,51 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
       {loading ? <p className="task-empty">Memuat…</p> : days.length === 0 ? <p className="task-empty">Belum ada rencana. Tambah tempat pertama di Hari 1.</p> : days.map(([d, list]) => (
         <div className="itin-day" key={d}>
           <h3>Hari {d}<small>{dayLabel(departureDate, d)}</small></h3>
-          {list.map((stop) => {
+          {list.map((stop, index) => {
             const draft = shopDrafts[stop.id] || { name: "", items: "" };
             return (
               <article className="itin-stop" key={stop.id}>
-                <div className="itin-stop-head">
-                  <MapPin size={17} />
-                  <div><b>{stop.place}</b>{stop.note && <small>{stop.note}</small>}</div>
-                  <button aria-label={`Hapus ${stop.place}`} onClick={() => void removeStop(stop)}><Trash2 size={15} /></button>
-                </div>
+                {editingStop === stop.id ? (
+                  <form className="itin-edit" onSubmit={(e) => { e.preventDefault(); void saveStop(stop); }}>
+                    <label>Hari<input type="number" min={1} max={60} value={stopDraft.day} onChange={(e) => setStopDraft((d) => ({ ...d, day: Math.min(60, Math.max(1, Math.floor(Number(e.target.value)) || 1)) }))} /></label>
+                    <label className="itin-wide">Tempat<input value={stopDraft.place} maxLength={120} onChange={(e) => setStopDraft((d) => ({ ...d, place: e.target.value }))} /></label>
+                    <label className="itin-wide">Catatan<input value={stopDraft.note} maxLength={500} onChange={(e) => setStopDraft((d) => ({ ...d, note: e.target.value }))} /></label>
+                    <div className="itin-edit-actions">
+                      <button type="button" onClick={() => setEditingStop(null)}>Batal</button>
+                      <button type="submit" disabled={!stopDraft.place.trim()}>Simpan</button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="itin-stop-head">
+                    <MapPin size={17} />
+                    <div><b>{stop.place}</b>{stop.note && <small>{stop.note}</small>}</div>
+                    <button aria-label={`Naikkan ${stop.place}`} disabled={index === 0} onClick={() => void moveStop(list, index, -1)}><ArrowUp size={15} /></button>
+                    <button aria-label={`Turunkan ${stop.place}`} disabled={index === list.length - 1} onClick={() => void moveStop(list, index, 1)}><ArrowDown size={15} /></button>
+                    <button aria-label={`Edit ${stop.place}`} onClick={() => startEditStop(stop)}><Pencil size={15} /></button>
+                    <button aria-label={`Hapus ${stop.place}`} onClick={() => void removeStop(stop)}><Trash2 size={15} /></button>
+                  </div>
+                )}
                 <ul className="itin-shops">
                   {stop.shops.map((shop) => (
+                    editingShop === shop.id ? (
+                    <li key={shop.id} className="itin-shop-edit">
+                      <form onSubmit={(e) => { e.preventDefault(); if (!shopEdit.name.trim()) return; void saveShops(stop, stop.shops.map((x) => (x.id === shop.id ? { ...x, name: shopEdit.name.trim(), items: shopEdit.items.trim() } : x))); setEditingShop(null); }}>
+                        <input value={shopEdit.name} placeholder="Toko" onChange={(e) => setShopEdit((d) => ({ ...d, name: e.target.value }))} />
+                        <input value={shopEdit.items} placeholder="Barang dicari" onChange={(e) => setShopEdit((d) => ({ ...d, items: e.target.value }))} />
+                        <button type="button" onClick={() => setEditingShop(null)}>Batal</button>
+                        <button type="submit" disabled={!shopEdit.name.trim()}>Simpan</button>
+                      </form>
+                    </li>
+                    ) : (
                     <li key={shop.id} className={shop.done ? "done" : ""}>
                       <button className="itin-check" aria-pressed={shop.done} aria-label={`Tandai ${shop.name}`} onClick={() => void saveShops(stop, stop.shops.map((x) => (x.id === shop.id ? { ...x, done: !x.done } : x)))}>
                         {shop.done ? <CheckCircle2 /> : <i />}
                       </button>
                       <span><b>{shop.name}</b>{shop.items && <small>{shop.items}</small>}</span>
+                      <button aria-label={`Edit ${shop.name}`} onClick={() => { setEditingShop(shop.id); setShopEdit({ name: shop.name, items: shop.items }); }}><Pencil size={14} /></button>
                       <button aria-label={`Hapus ${shop.name}`} onClick={() => void saveShops(stop, stop.shops.filter((x) => x.id !== shop.id))}><Trash2 size={14} /></button>
                     </li>
+                    )
                   ))}
                 </ul>
                 <form className="itin-shop-add" onSubmit={(e) => { e.preventDefault(); addShop(stop); }}>

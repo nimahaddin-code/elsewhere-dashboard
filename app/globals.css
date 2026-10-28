@@ -2127,3 +2127,13 @@ main {
 .itin-shop-add button{width:42px;height:42px;border-radius:10px;background:var(--blush);color:var(--plum);display:grid;place-items:center}
 .itin-shop-add button:disabled{opacity:.5}
 @media(max-width:600px){.itin-shop-add{grid-template-columns:1fr 1fr}.itin-shop-add button{grid-column:1/-1;width:auto}}
+.itin-stop button:disabled{opacity:.3;cursor:default}
+.itin-edit{display:grid;grid-template-columns:90px 1fr;gap:10px}
+.itin-edit label{display:grid;gap:5px;color:var(--muted);font-size:12px;font-weight:600}
+.itin-edit .itin-wide{grid-column:1/-1}
+.itin-edit input,.itin-shop-edit input{height:42px;min-width:0;border:1px solid var(--line);border-radius:10px;padding:0 10px;font-size:16px;background:#fff}
+.itin-edit-actions{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end}
+.itin-edit-actions button,.itin-shop-edit button{height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:600;cursor:pointer}
+.itin-edit-actions button[type=submit],.itin-shop-edit button[type=submit]{background:var(--plum);border-color:var(--plum);color:#fff}
+.itin-shop-edit{display:block!important}.itin-shop-edit form{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+.itin-shop-edit button:disabled{opacity:.5}
