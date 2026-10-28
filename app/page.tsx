@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BarChart3,
   Bell,
+  Calculator,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -34,6 +35,7 @@ import ContentPlanGenerator from "../components/content-plan-generator";
 import "./catalogue-dashboard.css";
 import { filterCatalogue, catalogueCategoryNames, type CatalogueStatus } from "../lib/catalogue-search";
 import OrdersPanel from "../components/orders-panel";
+import { PriceCalculator } from "../components/price-calculator";
 import { calculatePrice, defaultMargin, isFashion } from "../lib/pricing";
 import { type Order, paidAmount } from "../lib/commerce";
 import { supabaseConfigured } from "../lib/supabase";
@@ -231,7 +233,7 @@ export function Dashboard() {
   const [recoveryMode,setRecoveryMode]=useState(false);
   const [newPassword,setNewPassword]=useState("");
   const [syncStatus, setSyncStatus] = useState("Menunggu login");
-  const [view, setView] = useState<"dashboard" | "trip" | "catalogue" | "product" | "orders" | "content">(
+  const [view, setView] = useState<"dashboard" | "trip" | "catalogue" | "product" | "orders" | "content" | "calculator">(
     "dashboard",
   );
   const scrollPositions = useRef<Record<string, number>>({
@@ -251,7 +253,7 @@ export function Dashboard() {
     }));
   };
   const switchView = (
-    next: "dashboard" | "trip" | "catalogue" | "orders" | "content",
+    next: "dashboard" | "trip" | "catalogue" | "orders" | "content" | "calculator",
   ) => {
     if (view !== "product") {
       scrollPositions.current[view] = window.scrollY;
@@ -424,7 +426,7 @@ export function Dashboard() {
       const saved = sessionStorage.getItem("elsewhere-dashboard-state");
       if (saved) {
         const parsed = JSON.parse(saved) as { view?: string; activeTripCode?: string; scrollY?: number; scrollPositions?: Record<string, number> };
-        if (parsed.view && ["dashboard", "trip", "catalogue", "orders"].includes(parsed.view)) setView(parsed.view as typeof view);
+        if (parsed.view && ["dashboard", "trip", "catalogue", "orders", "calculator"].includes(parsed.view)) setView(parsed.view as typeof view);
         if (parsed.activeTripCode) setActiveTripCode(parsed.activeTripCode);
         if (parsed.scrollPositions) Object.assign(scrollPositions.current, parsed.scrollPositions);
         if (typeof parsed.scrollY === "number") {
@@ -436,6 +438,7 @@ export function Dashboard() {
     } catch {
       // Ignore stale session state.
     }
+    if (new URLSearchParams(window.location.search).get("view") === "calculator") setView("calculator");
 
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user || null);
@@ -1325,6 +1328,18 @@ export function Dashboard() {
             <LayoutDashboard />
             Dashboard
           </a>
+          <a
+            className={view === "calculator" ? "active" : ""}
+            onClick={() => {
+              switchView("calculator");
+              setVariantProduct(null);
+              window.history.pushState({}, "", "/dashboard");
+              setNav(false);
+            }}
+          >
+            <Calculator />
+            Kalkulator harga
+          </a>
           <a>
             <Users />
             Leads & waitlist <em>48</em>
@@ -1406,6 +1421,14 @@ export function Dashboard() {
           <ChevronRight size={16} />
         </div>
       </aside>
+      <nav className="tabbar" aria-label="Menu utama">
+        {([["dashboard", "Home", LayoutDashboard], ["orders", "Orders", ShoppingBag], ["calculator", "Hitung", Calculator], ["catalogue", "Katalog", PackageSearch]] as const).map(([key, label, Icon]) => (
+          <button key={key} className={view === key || (key === "catalogue" && view === "product") ? "active" : ""} onClick={() => { switchView(key); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); window.scrollTo(0, 0); }}>
+            <Icon size={21} />
+            {label}
+          </button>
+        ))}
+      </nav>
       <main>
         <header className="topbar">
           <button className="menu-btn" onClick={() => setNav(true)}>
@@ -1437,7 +1460,7 @@ export function Dashboard() {
         </header>
         <div className="commerce-trip-bar"><label>Trip aktif <select value={activeTripCode} onChange={e => { setActiveTripCode(e.target.value); setVariantProduct(null); if(view === "product") switchView("catalogue"); }}>{trips.map(t => <option key={t.code} value={t.code}>{t.name} · {t.code}</option>)}</select></label><a href="/" target="_blank" rel="noreferrer">Lihat katalog ↗</a><output>{syncStatus}</output></div>
         {commerceError && <p role="alert" className="commerce-error">{commerceError}</p>}
-        {view === "content" ? <ContentPlanGenerator products={catalogue} tripCountry={activeTrip?.country} sellingPrice={(product, variant) => productPricing({ local_price: variant?.local_price ?? product.local_price, price_thb: variant?.local_price ?? product.price_thb, weight_grams: variant?.weight_grams ?? product.weight_grams, category: product.category, margin_percent: product.margin_percent }).sell}/> : view === "orders" ? <OrdersPanel key={activeTripCode} tripCode={activeTripCode} onChange={() => setCommerceRevision(n => n + 1)}/> : view === "trip" ? (
+        {view === "calculator" ? <PriceCalculator country={activeTrip?.country || "Malaysia"} currency={currency} symbol={currencySymbol} rate={rate} fashionCargo={Number(activeTrip?.fashion_cargo_per_kg) || cargoRate} otherCargo={Number(activeTrip?.nonfashion_cargo_per_kg) || otherCargoRate} categories={categories}/> : view === "content" ? <ContentPlanGenerator products={catalogue} tripCountry={activeTrip?.country} sellingPrice={(product, variant) => productPricing({ local_price: variant?.local_price ?? product.local_price, price_thb: variant?.local_price ?? product.price_thb, weight_grams: variant?.weight_grams ?? product.weight_grams, category: product.category, margin_percent: product.margin_percent }).sell}/> : view === "orders" ? <OrdersPanel key={activeTripCode} tripCode={activeTripCode} onChange={() => setCommerceRevision(n => n + 1)}/> : view === "trip" ? (
           <section className="trip-workspace">
             <div className="trip-switcher">
               <label>
