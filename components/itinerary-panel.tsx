@@ -1,9 +1,10 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, CheckCircle2, MapPin, Pencil, Plus, Route, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, CheckCircle2, ChevronDown, MapPin, Pencil, Plus, Route, Store, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 type Shop = { id: string; name: string; items: string; done: boolean };
 type Stop = { id: string; day: number; position: number; place: string; note: string; shops: Shop[]; map_url: string; getting_there: string };
+type StopDraft = { day: string; time: string; place: string; note: string; url: string; leg: string };
 
 // Seeded notes start with the planned time, e.g. "19:40 · Pavilion ...".
 const timeRe = /^(\d{1,2}:\d{2})\s*·\s*/;
@@ -21,21 +22,49 @@ const dayDate = (departure: string | null | undefined, day: number, opts: Intl.D
   return d.toLocaleDateString("id-ID", opts);
 };
 
+// Day number that matches today's date, or 0 when the trip is not under way.
+const todayDay = (departure: string | null | undefined) => {
+  if (!departure) return 0;
+  const start = new Date(departure + "T00:00:00");
+  if (Number.isNaN(start.getTime())) return 0;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.round((now.getTime() - start.getTime()) / 86400000) + 1;
+};
+
 const safeUrl = (u: string) => (/^https?:\/\//i.test(u.trim()) ? u.trim() : "");
 const clampDay = (v: string) => Math.min(60, Math.max(1, Math.floor(Number(v)) || 1));
+const emptyDraft = (day = 1): StopDraft => ({ day: String(day), time: "", place: "", note: "", url: "", leg: "" });
+
+function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="isheet-backdrop" onMouseDown={onClose}>
+      <div className="isheet" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="isheet-grabber" aria-hidden="true" />
+        <div className="isheet-title">
+          <button type="button" onClick={onClose}>Batal</button>
+          <h3>{title}</h3>
+          <span />
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function ItineraryPanel({ tripCode, tripName, departureDate }: { tripCode: string; tripName?: string; departureDate?: string | null }) {
   const [stops, setStops] = useState<Stop[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<number | "all">("all");
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ day: "1", time: "", place: "", note: "", url: "", leg: "" });
-  const [editingStop, setEditingStop] = useState<string | null>(null);
-  const [stopDraft, setStopDraft] = useState({ day: "1", time: "", place: "", note: "", url: "", leg: "" });
-  const [addingShop, setAddingShop] = useState<string | null>(null);
-  const [editingShop, setEditingShop] = useState<string | null>(null);
-  const [shopDraft, setShopDraft] = useState({ name: "", items: "" });
+  const [filter, setFilter] = useState<number | "all" | null>(null);
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [stopSheet, setStopSheet] = useState<{ id: string | null; draft: StopDraft } | null>(null);
+  const [shopSheet, setShopSheet] = useState<{ stopId: string; shopId: string | null; name: string; items: string } | null>(null);
 
   const load = async () => {
     const { data, error: err } = await supabase
@@ -52,7 +81,8 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
 
   useEffect(() => {
     setLoading(true);
-    setFilter("all");
+    setFilter(null);
+    setOpen(new Set());
     void load();
   }, [tripCode]);
 
@@ -62,40 +92,28 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
     return [...map.entries()].sort((a, b) => a[0] - b[0]);
   }, [stops]);
 
-  const visible = filter === "all" ? days : days.filter(([d]) => d === filter);
+  // Default to today's day while travelling, otherwise the first day.
+  const active: number | "all" = filter ?? (days.some(([d]) => d === todayDay(departureDate)) ? todayDay(departureDate) : days[0]?.[0] ?? "all");
+  const visible = active === "all" ? days : days.filter(([d]) => d === active);
   const totalShops = stops.reduce((n, s) => n + s.shops.length, 0);
   const doneShops = stops.reduce((n, s) => n + s.shops.filter((x) => x.done).length, 0);
 
-  const addStop = async () => {
+  const toggleOpen = (id: string) => setOpen((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+
+  const saveStop = async () => {
+    if (!stopSheet) return;
+    const { id, draft } = stopSheet;
     const name = draft.place.trim();
     if (!name) return;
     const day = clampDay(draft.day);
-    const position = stops.filter((s) => s.day === day).length;
-    const { error: err } = await supabase.from("trip_itinerary_stops").insert({ trip_code: tripCode, day, position, place: name, note: joinNote(draft.time, draft.note), map_url: safeUrl(draft.url), getting_there: draft.leg.trim() });
-    if (err) { setError("Gagal menambah tempat"); return; }
-    setDraft((d) => ({ ...d, time: "", place: "", note: "", url: "", leg: "" }));
-    setAdding(false);
-    await load();
-  };
-
-  const startEditStop = (stop: Stop) => {
-    const { time, rest } = splitNote(stop.note);
-    setEditingStop(stop.id);
-    setStopDraft({ day: String(stop.day), time, place: stop.place, note: rest, url: stop.map_url || "", leg: stop.getting_there || "" });
-  };
-
-  const saveStop = async (stop: Stop) => {
-    const name = stopDraft.place.trim();
-    if (!name) return;
-    const day = clampDay(stopDraft.day);
-    const patch: Record<string, unknown> = { place: name, note: joinNote(stopDraft.time, stopDraft.note), map_url: safeUrl(stopDraft.url), getting_there: stopDraft.leg.trim() };
-    if (day !== stop.day) {
-      patch.day = day;
-      patch.position = stops.filter((s) => s.day === day).length;
-    }
-    const { error: err } = await supabase.from("trip_itinerary_stops").update(patch).eq("id", stop.id);
-    if (err) setError("Gagal menyimpan");
-    setEditingStop(null);
+    const fields = { place: name, note: joinNote(draft.time, draft.note), map_url: safeUrl(draft.url), getting_there: draft.leg.trim() };
+    const existing = id ? stops.find((s) => s.id === id) : undefined;
+    const { error: err } = existing
+      ? await supabase.from("trip_itinerary_stops").update(day !== existing.day ? { ...fields, day, position: stops.filter((s) => s.day === day).length } : fields).eq("id", existing.id)
+      : await supabase.from("trip_itinerary_stops").insert({ trip_code: tripCode, day, position: stops.filter((s) => s.day === day).length, ...fields });
+    if (err) { setError(existing ? "Gagal menyimpan" : "Gagal menambah tempat"); return; }
+    setStopSheet(null);
+    setFilter(day);
     await load();
   };
 
@@ -111,9 +129,7 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
     if (target < 0 || target >= list.length) return;
     const order = [...list];
     [order[index], order[target]] = [order[target], order[index]];
-    const results = await Promise.all(
-      order.map((s, i) => supabase.from("trip_itinerary_stops").update({ position: i }).eq("id", s.id)),
-    );
+    const results = await Promise.all(order.map((s, i) => supabase.from("trip_itinerary_stops").update({ position: i }).eq("id", s.id)));
     if (results.some((r) => r.error)) setError("Gagal mengubah urutan");
     await load();
   };
@@ -124,19 +140,20 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
     if (err) { setError("Gagal menyimpan"); await load(); }
   };
 
-  const submitShop = (stop: Stop) => {
-    const name = shopDraft.name.trim();
-    if (!name) return;
-    const items = shopDraft.items.trim();
-    if (editingShop) {
-      void saveShops(stop, stop.shops.map((x) => (x.id === editingShop ? { ...x, name, items } : x)));
-    } else {
-      void saveShops(stop, [...stop.shops, { id: crypto.randomUUID(), name, items, done: false }]);
-    }
-    setAddingShop(null);
-    setEditingShop(null);
-    setShopDraft({ name: "", items: "" });
+  const submitShop = () => {
+    if (!shopSheet) return;
+    const stop = stops.find((s) => s.id === shopSheet.stopId);
+    const name = shopSheet.name.trim();
+    if (!stop || !name) return;
+    const items = shopSheet.items.trim();
+    void saveShops(stop, shopSheet.shopId
+      ? stop.shops.map((x) => (x.id === shopSheet.shopId ? { ...x, name, items } : x))
+      : [...stop.shops, { id: crypto.randomUUID(), name, items, done: false }]);
+    setShopSheet(null);
   };
+
+  const setDraft = (patch: Partial<StopDraft>) => setStopSheet((s) => (s ? { ...s, draft: { ...s.draft, ...patch } } : s));
+  const nextDay = typeof active === "number" ? active : 1;
 
   return (
     <section className="itin">
@@ -144,123 +161,127 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
         <div>
           <span>Itinerary</span>
           <h2>{tripName || tripCode}</h2>
-          <p>Tempat, toko, dan barang yang mau dicari. {totalShops > 0 && <b>{doneShops}/{totalShops} toko dicek</b>}</p>
+          <p>{stops.length} tempat · {totalShops} toko{totalShops > 0 && <> · <b>{doneShops} dicek</b></>}</p>
         </div>
-        <button className="itin-add-btn" onClick={() => setAdding((v) => !v)}><Plus size={16} /> Tambah tempat</button>
+        <button className="itin-add-btn" onClick={() => setStopSheet({ id: null, draft: emptyDraft(nextDay) })}><Plus size={18} /> Tempat</button>
       </header>
       {error && <p role="alert" className="commerce-error">{error}</p>}
 
-      {adding && (
-        <form className="itin-form" onSubmit={(e) => { e.preventDefault(); void addStop(); }}>
-          <label>Hari<input type="number" min={1} max={60} value={draft.day} onChange={(e) => setDraft((d) => ({ ...d, day: e.target.value }))} /></label>
-          <label>Jam<input type="time" value={draft.time} onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))} /></label>
-          <label className="wide">Tempat<input value={draft.place} maxLength={120} placeholder="mis. Pavilion KL" onChange={(e) => setDraft((d) => ({ ...d, place: e.target.value }))} /></label>
-          <label className="wide">Catatan<input value={draft.note} maxLength={450} placeholder="opsional" onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} /></label>
-          <label className="wide">Link lokasi (Google Maps)<input type="url" inputMode="url" value={draft.url} maxLength={500} placeholder="https://maps.google.com/…" onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))} /></label>
-          <label className="wide">Cara ke sini<input value={draft.leg} maxLength={300} placeholder="mis. Dari hotel: jalan kaki 5 menit" onChange={(e) => setDraft((d) => ({ ...d, leg: e.target.value }))} /></label>
-          <div className="itin-form-actions">
-            <button type="button" onClick={() => setAdding(false)}>Batal</button>
-            <button type="submit" className="primary" disabled={!draft.place.trim()}>Simpan</button>
-          </div>
-        </form>
-      )}
-
-      {days.length > 1 && (
-        <div className="itin-filter" role="tablist" aria-label="Pilih hari">
-          <button className={filter === "all" ? "on" : ""} onClick={() => setFilter("all")}>Semua</button>
-          {days.map(([d]) => (
-            <button key={d} className={filter === d ? "on" : ""} onClick={() => setFilter(d)}>
-              Hari {d}<small>{dayDate(departureDate, d, { day: "numeric", month: "short" })}</small>
-            </button>
-          ))}
+      {days.length > 0 && (
+        <div className="itin-days" role="tablist" aria-label="Pilih hari">
+          {days.map(([d, list]) => {
+            const shops = list.reduce((n, s) => n + s.shops.length, 0);
+            const done = list.reduce((n, s) => n + s.shops.filter((x) => x.done).length, 0);
+            return (
+              <button key={d} role="tab" aria-selected={active === d} className={(active === d ? "on " : "") + (shops > 0 && done === shops ? "complete" : "")} onClick={() => setFilter(d)}>
+                <small>{dayDate(departureDate, d, { weekday: "short" }) || "Hari"}</small>
+                <b>{d}</b>
+                <em>{dayDate(departureDate, d, { day: "numeric", month: "short" }) || `${list.length} tempat`}</em>
+              </button>
+            );
+          })}
+          {days.length > 1 && <button role="tab" aria-selected={active === "all"} className={"all" + (active === "all" ? " on" : "")} onClick={() => setFilter("all")}><small>Semua</small><b>≡</b><em>{days.length} hari</em></button>}
         </div>
       )}
 
-      {loading ? <p className="task-empty">Memuat…</p> : days.length === 0 ? <p className="task-empty">Belum ada rencana. Tambah tempat pertama.</p> : visible.map(([d, list]) => (
-        <div className="itin-day" key={d}>
-          <h3>
-            <span className="itin-day-num">Hari {d}</span>
-            <span>{dayDate(departureDate, d, { weekday: "long", day: "numeric", month: "long" })}</span>
-            <small>{list.length} tempat</small>
-          </h3>
-          <div className="itin-table" role="table">
-            <div className="itin-row itin-th" role="row">
-              <span>Jam</span><span>Tempat</span><span>Toko & barang yang dicari</span><span>Catatan</span><span />
+      {loading ? <p className="task-empty">Memuat…</p> : days.length === 0 ? (
+        <div className="itin-empty"><MapPin size={28} aria-hidden="true" /><p>Belum ada rencana.</p><button className="primary" onClick={() => setStopSheet({ id: null, draft: emptyDraft(1) })}>Tambah tempat pertama</button></div>
+      ) : visible.map(([d, list]) => {
+        const shops = list.reduce((n, s) => n + s.shops.length, 0);
+        const done = list.reduce((n, s) => n + s.shops.filter((x) => x.done).length, 0);
+        return (
+          <div className="itin-day" key={d}>
+            <div className="itin-day-card">
+              <div>
+                <span>Hari {d}</span>
+                <strong>{dayDate(departureDate, d, { weekday: "long", day: "numeric", month: "long" }) || `Hari ${d}`}</strong>
+              </div>
+              <div className="itin-day-stats">
+                <b>{list.length}</b><small>tempat</small>
+                <b>{done}/{shops}</b><small>toko</small>
+              </div>
+              <i className="itin-bar"><u style={{ width: (shops ? (done / shops) * 100 : 0) + "%" }} /></i>
             </div>
-            {list.map((stop, index) => {
-              const { time, rest } = splitNote(stop.note);
-              if (editingStop === stop.id) {
+
+            <ol className="itin-timeline">
+              {list.map((stop, index) => {
+                const { time, rest } = splitNote(stop.note);
+                const isOpen = open.has(stop.id);
+                const shopDone = stop.shops.filter((x) => x.done).length;
+                const mapUrl = safeUrl(stop.map_url);
                 return (
-                  <form className="itin-row itin-editrow" key={stop.id} onSubmit={(e) => { e.preventDefault(); void saveStop(stop); }}>
-                    <label>Hari<input type="number" min={1} max={60} value={stopDraft.day} onChange={(e) => setStopDraft((x) => ({ ...x, day: e.target.value }))} /></label>
-                    <label>Jam<input type="time" value={stopDraft.time} onChange={(e) => setStopDraft((x) => ({ ...x, time: e.target.value }))} /></label>
-                    <label className="wide">Tempat<input value={stopDraft.place} maxLength={120} onChange={(e) => setStopDraft((x) => ({ ...x, place: e.target.value }))} /></label>
-                    <label className="wide">Catatan<input value={stopDraft.note} maxLength={450} onChange={(e) => setStopDraft((x) => ({ ...x, note: e.target.value }))} /></label>
-                    <label className="wide">Link lokasi (Google Maps)<input type="url" inputMode="url" value={stopDraft.url} maxLength={500} placeholder="https://maps.google.com/…" onChange={(e) => setStopDraft((x) => ({ ...x, url: e.target.value }))} /></label>
-                    <label className="wide">Cara ke sini<input value={stopDraft.leg} maxLength={300} onChange={(e) => setStopDraft((x) => ({ ...x, leg: e.target.value }))} /></label>
-                    <div className="itin-form-actions">
-                      <button type="button" onClick={() => setEditingStop(null)}>Batal</button>
-                      <button type="submit" className="primary" disabled={!stopDraft.place.trim()}>Simpan</button>
+                  <li key={stop.id} className={"itin-stop" + (isOpen ? " open" : "") + (stop.shops.length > 0 && shopDone === stop.shops.length ? " complete" : "")}>
+                    {stop.getting_there && <div className="itin-leg"><Route size={14} aria-hidden="true" /><span>{stop.getting_there}</span></div>}
+                    <div className="itin-card">
+                      <button className="itin-card-head" aria-expanded={isOpen} onClick={() => toggleOpen(stop.id)}>
+                        <span className="itin-time">{time || String(index + 1)}</span>
+                        <span className="itin-card-main">
+                          <b>{stop.place}</b>
+                          <small>
+                            {stop.shops.length > 0 ? <><Store size={13} aria-hidden="true" /> {shopDone}/{stop.shops.length} toko</> : "Belum ada toko"}
+                            {rest && !isOpen && <> · {rest}</>}
+                          </small>
+                        </span>
+                        <ChevronDown className="itin-chev" size={20} aria-hidden="true" />
+                      </button>
+
+                      {isOpen && (
+                        <div className="itin-detail">
+                          {rest && <p className="itin-note">{rest}</p>}
+                          <ul className="itin-shoplist">
+                            {stop.shops.map((shop) => (
+                              <li key={shop.id} className={shop.done ? "done" : ""}>
+                                <button className="itin-shop-main" aria-pressed={shop.done} onClick={() => void saveShops(stop, stop.shops.map((x) => (x.id === shop.id ? { ...x, done: !x.done } : x)))}>
+                                  <span className="itin-check">{shop.done ? <CheckCircle2 /> : <i />}</span>
+                                  <span><b>{shop.name}</b>{shop.items && <small>{shop.items}</small>}</span>
+                                </button>
+                                <button className="ghost" aria-label={`Edit ${shop.name}`} onClick={() => setShopSheet({ stopId: stop.id, shopId: shop.id, name: shop.name, items: shop.items })}><Pencil size={16} /></button>
+                                <button className="ghost" aria-label={`Hapus ${shop.name}`} onClick={() => void saveShops(stop, stop.shops.filter((x) => x.id !== shop.id))}><Trash2 size={16} /></button>
+                              </li>
+                            ))}
+                            <li className="itin-addrow"><button onClick={() => setShopSheet({ stopId: stop.id, shopId: null, name: "", items: "" })}><Plus size={16} /> Tambah toko / barang</button></li>
+                          </ul>
+                          <div className="itin-actions">
+                            {mapUrl && <a className="itin-map" href={mapUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} aria-hidden="true" /> Maps</a>}
+                            <button onClick={() => { const { time: t, rest: r } = splitNote(stop.note); setStopSheet({ id: stop.id, draft: { day: String(stop.day), time: t, place: stop.place, note: r, url: stop.map_url || "", leg: stop.getting_there || "" } }); }}><Pencil size={16} /> Edit</button>
+                            <button aria-label={`Naikkan ${stop.place}`} disabled={index === 0} onClick={() => void moveStop(list, index, -1)}><ArrowUp size={16} /></button>
+                            <button aria-label={`Turunkan ${stop.place}`} disabled={index === list.length - 1} onClick={() => void moveStop(list, index, 1)}><ArrowDown size={16} /></button>
+                            <button className="danger" aria-label={`Hapus ${stop.place}`} onClick={() => void removeStop(stop)}><Trash2 size={16} /></button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </form>
+                  </li>
                 );
-              }
-              return (
-                <Fragment key={stop.id}>
-                {stop.getting_there && (
-                  <div className="itin-leg" role="row"><Route size={14} aria-hidden="true" /><span>{stop.getting_there}</span></div>
-                )}
-                <div className="itin-row" role="row">
-                  <span className="itin-time" data-label="Jam">{time || "—"}</span>
-                  <span className="itin-place" data-label="Tempat"><b>{stop.place}</b>{safeUrl(stop.map_url) && <a className="itin-map" href={safeUrl(stop.map_url)} target="_blank" rel="noopener noreferrer"><MapPin size={13} aria-hidden="true" /> Buka di Maps</a>}</span>
-                  <span className="itin-shops-cell" data-label="Toko & barang">
-                    {stop.shops.length === 0 && addingShop !== stop.id && <em>Belum ada toko</em>}
-                    <ul>
-                      {stop.shops.map((shop) => editingShop === shop.id ? (
-                        <li key={shop.id}>
-                          <form className="itin-shopform" onSubmit={(e) => { e.preventDefault(); submitShop(stop); }}>
-                            <input autoFocus value={shopDraft.name} placeholder="Toko" onChange={(e) => setShopDraft((x) => ({ ...x, name: e.target.value }))} />
-                            <input value={shopDraft.items} placeholder="Barang dicari" onChange={(e) => setShopDraft((x) => ({ ...x, items: e.target.value }))} />
-                            <button type="button" onClick={() => { setEditingShop(null); setShopDraft({ name: "", items: "" }); }}>Batal</button>
-                            <button type="submit" className="primary" disabled={!shopDraft.name.trim()}>Simpan</button>
-                          </form>
-                        </li>
-                      ) : (
-                        <li key={shop.id} className={shop.done ? "done" : ""}>
-                          <button className="itin-check" aria-pressed={shop.done} aria-label={`Tandai ${shop.name}`} onClick={() => void saveShops(stop, stop.shops.map((x) => (x.id === shop.id ? { ...x, done: !x.done } : x)))}>
-                            {shop.done ? <CheckCircle2 /> : <i />}
-                          </button>
-                          <span><b>{shop.name}</b>{shop.items && <small>{shop.items}</small>}</span>
-                          <button className="ghost" aria-label={`Edit ${shop.name}`} onClick={() => { setAddingShop(null); setEditingShop(shop.id); setShopDraft({ name: shop.name, items: shop.items }); }}><Pencil size={13} /></button>
-                          <button className="ghost" aria-label={`Hapus ${shop.name}`} onClick={() => void saveShops(stop, stop.shops.filter((x) => x.id !== shop.id))}><Trash2 size={13} /></button>
-                        </li>
-                      ))}
-                    </ul>
-                    {addingShop === stop.id ? (
-                      <form className="itin-shopform" onSubmit={(e) => { e.preventDefault(); submitShop(stop); }}>
-                        <input autoFocus value={shopDraft.name} placeholder="Toko, mis. Padini" onChange={(e) => setShopDraft((x) => ({ ...x, name: e.target.value }))} />
-                        <input value={shopDraft.items} placeholder="Barang dicari" onChange={(e) => setShopDraft((x) => ({ ...x, items: e.target.value }))} />
-                        <button type="button" onClick={() => { setAddingShop(null); setShopDraft({ name: "", items: "" }); }}>Batal</button>
-                        <button type="submit" className="primary" disabled={!shopDraft.name.trim()}>Tambah</button>
-                      </form>
-                    ) : (
-                      <button className="itin-addshop" onClick={() => { setEditingShop(null); setAddingShop(stop.id); setShopDraft({ name: "", items: "" }); }}><Plus size={13} /> Toko</button>
-                    )}
-                  </span>
-                  <span className="itin-note" data-label="Catatan">{rest}</span>
-                  <span className="itin-actions">
-                    <button className="ghost" aria-label={`Naikkan ${stop.place}`} disabled={index === 0} onClick={() => void moveStop(list, index, -1)}><ArrowUp size={15} /></button>
-                    <button className="ghost" aria-label={`Turunkan ${stop.place}`} disabled={index === list.length - 1} onClick={() => void moveStop(list, index, 1)}><ArrowDown size={15} /></button>
-                    <button className="ghost" aria-label={`Edit ${stop.place}`} onClick={() => startEditStop(stop)}><Pencil size={15} /></button>
-                    <button className="ghost" aria-label={`Hapus ${stop.place}`} onClick={() => void removeStop(stop)}><Trash2 size={15} /></button>
-                  </span>
-                </div>
-                </Fragment>
-              );
-            })}
+              })}
+            </ol>
           </div>
-        </div>
-      ))}
+        );
+      })}
+
+      {stopSheet && (
+        <Sheet title={stopSheet.id ? "Edit tempat" : "Tempat baru"} onClose={() => setStopSheet(null)}>
+          <form className="isheet-form" onSubmit={(e) => { e.preventDefault(); void saveStop(); }}>
+            <label className="wide">Tempat<input autoFocus value={stopSheet.draft.place} maxLength={120} placeholder="mis. Pavilion KL" onChange={(e) => setDraft({ place: e.target.value })} /></label>
+            <label>Hari<input type="number" inputMode="numeric" min={1} max={60} value={stopSheet.draft.day} onChange={(e) => setDraft({ day: e.target.value })} /></label>
+            <label>Jam<input type="time" value={stopSheet.draft.time} onChange={(e) => setDraft({ time: e.target.value })} /></label>
+            <label className="wide">Catatan<input value={stopSheet.draft.note} maxLength={450} placeholder="opsional" onChange={(e) => setDraft({ note: e.target.value })} /></label>
+            <label className="wide">Link Google Maps<input type="url" inputMode="url" value={stopSheet.draft.url} maxLength={500} placeholder="https://maps.google.com/…" onChange={(e) => setDraft({ url: e.target.value })} /></label>
+            <label className="wide">Cara ke sini<input value={stopSheet.draft.leg} maxLength={300} placeholder="mis. Dari hotel: jalan kaki 5 menit" onChange={(e) => setDraft({ leg: e.target.value })} /></label>
+            <button type="submit" className="primary" disabled={!stopSheet.draft.place.trim()}>Simpan</button>
+          </form>
+        </Sheet>
+      )}
+
+      {shopSheet && (
+        <Sheet title={shopSheet.shopId ? "Edit toko" : "Toko baru"} onClose={() => setShopSheet(null)}>
+          <form className="isheet-form" onSubmit={(e) => { e.preventDefault(); submitShop(); }}>
+            <label className="wide">Toko<input autoFocus value={shopSheet.name} maxLength={120} placeholder="mis. Padini" onChange={(e) => setShopSheet((s) => s && { ...s, name: e.target.value })} /></label>
+            <label className="wide">Barang yang dicari<input value={shopSheet.items} maxLength={300} placeholder="mis. blouse, tote bag" onChange={(e) => setShopSheet((s) => s && { ...s, items: e.target.value })} /></label>
+            <button type="submit" className="primary" disabled={!shopSheet.name.trim()}>Simpan</button>
+          </form>
+        </Sheet>
+      )}
     </section>
   );
 }

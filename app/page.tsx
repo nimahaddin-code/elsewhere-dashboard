@@ -290,6 +290,8 @@ export function Dashboard() {
   const[editorDirty,setEditorDirty]=useState(false);
   const[savingEditor,setSavingEditor]=useState(false);
   const[openVariantGroups,setOpenVariantGroups]=useState<Set<string>>(()=>new Set());
+  const[editorTab,setEditorTab]=useState<"info"|"varian"|"katalog">("info");
+  useEffect(()=>{setEditorTab("info")},[variantProduct?.id]);
   const[deletedVariantIds,setDeletedVariantIds]=useState<Set<string>>(()=>new Set());
   const[option1ValuesText,setOption1ValuesText]=useState("");
   const[option2ValuesText,setOption2ValuesText]=useState("");
@@ -1854,7 +1856,7 @@ export function Dashboard() {
             )}
           </section>
         ) : view === "product" && variantProduct ? (
-          <section className="product-editor-page">
+          <section className="product-editor-page" data-tab={editorTab}>
             <div className="product-editor-topbar">
               <button onClick={()=>closeProductEditor()}><ArrowLeft size={16}/> Kembali ke katalog</button>
               <small>{syncStatus}</small>
@@ -1863,11 +1865,14 @@ export function Dashboard() {
               </button>
             </div>
             <div className="product-editor-heading">
-              <div><span>PRODUCT EDITOR · {variantProduct.product_code}</span><h1>Edit produk</h1><p>Semua detail dan varian produk ada di satu halaman ini.</p></div>
+              <div><span>PRODUCT EDITOR · {variantProduct.product_code}</span><h1>{variantProduct.name||"Produk baru"}</h1><p>Semua detail dan varian produk ada di satu halaman ini.</p><div className="editor-sell"><strong>{format(productPricing(variantProduct).sell)}</strong><small>Modal {format(productPricing(variantProduct).capital)} · profit {format(productPricing(variantProduct).profit)} / unit</small></div></div>
               <span className={`status-badge ${variantProduct.published ? "live" : ""}`}>{variantProduct.published ? "Tampil di landing page" : "Masih draft"}</span>
             </div>
+            <div className="editor-tabs" role="tablist" aria-label="Bagian produk">
+              {([["info","Info & harga"],["varian",`Varian${variants.filter(v=>v.active!==false).length?` (${variants.filter(v=>v.active!==false).length})`:""}`],["katalog","Gambar katalog"]] as const).map(([key,label])=><button key={key} role="tab" aria-selected={editorTab===key} className={editorTab===key?"on":""} onClick={()=>{setEditorTab(key);window.scrollTo(0,0)}}>{label}</button>)}
+            </div>
             <div className="product-editor-layout">
-              <aside className="product-photo-editor panel">
+              <aside data-pane="info" className="product-photo-editor panel">
                 <div className="editor-photo-frame">
                   {variantProduct.photo_url ? <img src={variantProduct.photo_url} alt={variantProduct.name}/> : <div><PackageSearch size={34}/><span>Belum ada foto</span></div>}
                 </div>
@@ -1877,7 +1882,7 @@ export function Dashboard() {
                 <small>Foto hasil scraping sudah ditampilkan otomatis. Kamu tetap bisa menggantinya dengan foto sendiri.</small>
               </aside>
               <div className="product-editor-main">
-                <article className="panel editor-section">
+                <article data-pane="info" className="panel editor-section">
                   <div className="editor-section-title"><div><span>INFORMASI UTAMA</span><h2>Data produk</h2></div><small>Perubahan diterapkan setelah klik Simpan</small></div>
                   <div className="editor-form-grid">
                     <label className="wide">Nama produk<input value={variantProduct.name} onChange={e=>updateEditorProduct(variantProduct.id,"name",e.target.value)} onBlur={e=>saveProduct(variantProduct.id,"name",e.target.value)}/></label>
@@ -1903,7 +1908,7 @@ export function Dashboard() {
                   </div>
                   <p className="modal-help">Profit = harga jual setelah pembulatan − modal barang − kargo. Belum dikurangi biaya operasional, ongkir domestik, dan biaya pembayaran.</p>
                 </article>
-                <article className="panel editor-section">
+                <article data-pane="varian" className="panel editor-section">
                   <div className="editor-section-title"><div><span>VARIAN PRODUK</span><h2>Pilihan, foto & harga</h2></div><small>Semua detail tiap kombinasi ada dalam satu baris</small></div>
                   <p className="modal-help">Atur daftar pilihan di atas, lalu centang kombinasi yang ingin dijual. Centang menambah varian, lepas centang menonaktifkannya. Semua perubahan baru masuk database setelah klik Simpan.</p>
                   <div className="variant-option-settings">
@@ -1952,13 +1957,13 @@ export function Dashboard() {
                     })}
                   </div>
                 </article>
-                <CatalogueImageGenerator
+                <div data-pane="katalog"><CatalogueImageGenerator
                   product={variantProduct}
                   variants={variants}
                   tripCountry={activeTrip?.country}
                   sellingPrice={(variant)=>productPricing({local_price:variant.local_price,price_thb:variant.local_price,weight_grams:variant.weight_grams,category:variantProduct.category,margin_percent:variantProduct.margin_percent}).sell}
-                />
-                <div className="editor-danger-zone"><button onClick={()=>setProductDeleteConfirm({product:variantProduct,step:1,closeEditor:true})}><Trash2 size={14}/> Hapus produk</button></div>
+                /></div>
+                <div data-pane="info" className="editor-danger-zone"><button onClick={()=>setProductDeleteConfirm({product:variantProduct,step:1,closeEditor:true})}><Trash2 size={14}/> Hapus produk</button></div>
               </div>
             </div>
             <div className={`product-save-bar ${editorDirty?'dirty':''}`}><div><strong>{editorDirty?'Ada perubahan belum disimpan':'Semua perubahan sudah tersimpan'}</strong><small>Nama, foto, pilihan, dan seluruh detail varian disimpan sekaligus.</small></div><button type="button" disabled={!editorDirty||savingEditor} onClick={()=>void saveProductEditor()}>{savingEditor?'Menyimpan…':'Simpan'}</button></div>
