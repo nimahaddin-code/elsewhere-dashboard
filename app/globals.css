@@ -2411,3 +2411,22 @@ button{font-family:inherit;touch-action:manipulation}
   main .catalogue-workspace .catalogue-product-row .catalogue-actions button{min-height:40px;padding:0 14px;border-radius:999px;border:0;background:var(--ios-fill);font-size:14px}
   main .catalogue-workspace .catalogue-product-row .delete-product-button{color:#ff3b30;background:#ff3b3014}
 }
+
+/* Itinerary: content column + desktop table layout */
+.itin-col h4{margin:12px 0 0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--rose)}
+.itin-detail .itin-actions{grid-column:1/-1}
+@media (max-width:899px){
+  .itin-stop:not(.open) .itin-detail{display:none}
+}
+@media (min-width:900px){
+  .itin{max-width:1180px}
+  .itin-days{margin:0 0 14px;padding-left:0}
+  .itin-card{display:grid;grid-template-columns:300px 1fr}
+  .itin-card-head{align-items:start;border-right:.5px solid var(--ios-sep,#eee);cursor:default;padding:14px}
+  .itin-chev{display:none}
+  .itin-card-main small{white-space:normal}
+  .itin-detail{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;border-top:0;padding:4px 16px 14px}
+  .itin-detail .itin-note{grid-column:1/-1;margin:10px 0 0}
+  .itin-leg{margin-left:20px}
+}
+@media (min-width:900px){.itin-preview{display:none}}
