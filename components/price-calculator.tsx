@@ -90,11 +90,11 @@ export function PriceCalculator({ country, currency, symbol, rate, fashionCargo,
           <input type="number" inputMode="numeric" min={0} placeholder="350" value={grams} onChange={(e) => setGrams(e.target.value)} />
         </label>
         <label>
-          Untung / fee jastip (%)
+          Untung (%)
           <input type="number" inputMode="decimal" min={0} placeholder={String(categoryMargin)} value={margin} onChange={(e) => setMargin(e.target.value)} />
         </label>
         <label>
-          Fee tambahan / pcs (Rp)
+          Fee tambahan (Rp)
           <input type="number" inputMode="numeric" min={0} placeholder="0" value={flatFee} onChange={(e) => setFlatFee(e.target.value)} />
         </label>
         <label>
