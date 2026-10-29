@@ -1408,9 +1408,9 @@ export function Dashboard() {
       </aside>
       <nav className="tabbar" aria-label="Menu utama">
         {([["dashboard", "Home", LayoutDashboard], ["orders", "Orders", ShoppingBag], ["itinerary", "Itinerary", ListChecks], ["calculator", "Hitung", Calculator], ["catalogue", "Katalog", PackageSearch]] as const).map(([key, label, Icon]) => (
-          <button key={key} className={view === key || (key === "catalogue" && view === "product") ? "active" : ""} onClick={() => { switchView(key); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); window.scrollTo(0, 0); }}>
-            <Icon size={21} />
-            {label}
+          <button key={key} aria-current={view === key ? "page" : undefined} className={view === key || (key === "catalogue" && view === "product") ? "active" : ""} onClick={() => { switchView(key); setVariantProduct(null); setNav(false); window.history.pushState({}, "", "/dashboard"); window.scrollTo(0, 0); }}>
+            <Icon size={25} strokeWidth={view === key || (key === "catalogue" && view === "product") ? 2.2 : 1.75} aria-hidden="true" />
+            <span>{label}</span>
           </button>
         ))}
       </nav>
@@ -1421,7 +1421,7 @@ export function Dashboard() {
           </button>
           <div>
             <p>{today}</p>
-            <h1>Good morning, Ni'mah.</h1>
+            <h1>{{dashboard:"Halo, Ni'mah",orders:"Orders",itinerary:"Itinerary",calculator:"Kalkulator",catalogue:"Katalog",product:"Katalog",trip:"Trip",content:"Content plan"}[view]}</h1>
           </div>
           <div className="top-actions">
             <button

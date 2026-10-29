@@ -2156,3 +2156,101 @@ main {
   .itin-form .wide,.itin-editrow .wide{grid-column:1/-1}
   .itin-shopform{grid-template-columns:1fr 1fr}.itin-shopform input{grid-column:1/-1}
 }
+
+/* ===== Apple HIG layer: system font, large titles, grouped lists, translucent tab bar ===== */
+:root{--ios-bg:#f2f2f7;--ios-sep:rgba(60,60,67,.16);--ios-fill:rgba(118,118,128,.12);--ios-label2:rgba(60,60,67,.62);--ios-green:#34c759}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button{font-family:inherit;touch-action:manipulation}
+@media (max-width:760px){
+  body{background:var(--ios-bg);font-size:17px;line-height:1.35}
+  main{margin-left:0;padding:0 16px calc(96px + env(safe-area-inset-bottom))}
+  button{transition:opacity .15s ease,transform .15s ease}
+  button:active:not(:disabled){opacity:.55}
+  @media (prefers-reduced-motion:reduce){button{transition:none}}
+
+  /* Large-title navigation header */
+  .topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;margin:0 0 8px;padding-top:calc(env(safe-area-inset-top) + 6px)}
+  .topbar .menu-btn{order:1;display:grid;place-items:center;width:44px;height:44px;margin-left:-10px;padding:0;border:0;background:none;color:var(--plum)}
+  .topbar .top-actions{order:2}
+  .topbar>div:nth-child(2){order:3;flex:1 0 100%;margin-top:2px}
+  .topbar p{margin:0;font-size:13px;font-weight:500;letter-spacing:-.08px;text-transform:uppercase;color:var(--ios-label2)}
+  .topbar h1{font:700 34px/1.12 -apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;letter-spacing:.37px;color:#000}
+  .logout-btn{height:44px;border:0;background:none;padding:0;font-size:17px;font-weight:400;color:var(--plum)}
+
+  /* Trip picker as a grouped row */
+  .commerce-trip-bar{display:flex;flex-wrap:wrap;align-items:center;gap:0 12px;margin:10px 0 18px;padding:0;border:0;font-size:17px}
+  .commerce-trip-bar>label{flex:1 1 100%;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:0 16px;background:#fff;border-radius:12px;color:#000}
+  .commerce-trip-bar select{max-width:72%;font-size:16px;border:0;background:none;color:var(--plum);font-size:17px;text-align:right;text-align-last:right;padding:0}
+  .commerce-trip-bar>a{padding:8px 4px;color:var(--plum);font-size:15px;text-decoration:none}
+  .commerce-trip-bar output{margin-left:auto;padding:8px 4px;font-size:13px;color:var(--ios-label2)}
+
+  /* Cards */
+  .metrics{grid-template-columns:1fr 1fr;gap:10px}
+  .metric,.panel,.goal-panel,.finance-panel{border:0;border-radius:14px;box-shadow:none}
+  .metric strong{font:700 22px/1.2 -apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;letter-spacing:.35px}
+  .metric div,.metric span{font-size:13px}
+
+  /* Tab bar */
+  .tabbar{grid-template-columns:repeat(5,1fr);padding:0 0 env(safe-area-inset-bottom);background:rgba(249,249,249,.86);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid rgba(60,60,67,.29)}
+  .tabbar button{min-height:49px;gap:2px;padding:6px 0 4px;font-size:10px;font-weight:500;letter-spacing:.12px;color:#8e8e93}
+  .tabbar button.active{color:var(--plum)}
+
+  /* Calculator: Settings-style grouped form */
+  .pc{padding:4px 0 24px;max-width:none}
+  .pc-head span,.pc-head h2{display:none}
+  .pc-head p{margin:0 0 14px;font-size:15px;color:var(--ios-label2)}
+  .pc-rate{border-radius:12px;background:#fff;padding:12px 16px;margin-bottom:18px}
+  .pc-rate b{color:#000;font-size:17px}
+  .pc-form{display:block;background:#fff;border-radius:12px;overflow:hidden;margin-bottom:18px}
+  .pc-form label{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:0 16px;font-size:17px;font-weight:400;color:#000}
+  .pc-form label+label{background:linear-gradient(var(--ios-sep),var(--ios-sep)) 16px 0/calc(100% - 16px) .5px no-repeat}
+  .pc-form input,.pc-form select{width:46%;height:44px;border:0;border-radius:0;background:none;padding:0;text-align:right;text-align-last:right;font-size:17px;color:var(--plum)}
+  .pc-form input::placeholder{color:#c7c7cc}
+  .pc-form input:focus,.pc-form select:focus{outline:0}
+  .pc-result{border-radius:20px;padding:20px;background:linear-gradient(145deg,#6a4960,#4a3042);margin-bottom:18px}
+  .pc-result strong{font:700 44px/1.1 -apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;letter-spacing:.2px}
+  .pc-result button{height:50px;border-radius:14px;font-size:17px;font-weight:600}
+  .pc-lines{border:0;border-radius:12px;padding:0}
+  .pc-lines>div{padding:12px 16px;border:0;font-size:17px}
+  .pc-lines>div+div{background:linear-gradient(var(--ios-sep),var(--ios-sep)) 16px 0/calc(100% - 16px) .5px no-repeat}
+
+  /* Checklist */
+  .tasks .panel-head h2{font:700 20px -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+  .task-row .task-main{padding:12px 0;font-size:17px;min-height:48px}
+  .task-row+.task-row{background:linear-gradient(var(--ios-sep),var(--ios-sep)) 34px 0/calc(100% - 34px) .5px no-repeat}
+  .task-add input,.task-add select{height:44px;border:0;border-radius:10px;background:var(--ios-fill);font-size:17px}
+  .task-add button{height:44px;border-radius:12px;font-size:17px;font-weight:600}
+
+  /* Itinerary: segmented day control + inset grouped lists */
+  .itin{padding:0 0 24px;max-width:none}
+  .itin-head{margin-bottom:12px}
+  .itin-head span{display:none}
+  .itin-head h2{margin:0;font:400 15px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:var(--ios-label2)}
+  .itin-head p{display:none}
+  .itin-add-btn{width:100%;justify-content:center;height:50px;border-radius:14px;font-size:17px;font-weight:600}
+  .itin-filter{gap:0;padding:2px;margin:0 0 6px;background:var(--ios-fill);border-radius:9px;top:calc(env(safe-area-inset-top) + 4px);position:sticky;overflow:visible}
+  .itin-filter button{flex:1 1 0;min-width:0;padding:6px 0;border:0;border-radius:7px;background:none;font-size:13px;font-weight:500;color:#000}
+  .itin-filter button small{display:none}
+  .itin-filter button.on{background:#fff;color:#000;font-weight:600;box-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04)}
+  .itin-day{margin-bottom:22px}
+  .itin-day h3{display:flex;align-items:baseline;gap:6px;margin:18px 16px 7px;font-size:13px;font-weight:400;letter-spacing:-.08px;text-transform:uppercase;color:var(--ios-label2)}
+  .itin-day-num{padding:0;background:none;color:#000;font:600 13px -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+  .itin-day h3 small{font-size:13px}
+  .itin-table{border:0;border-radius:12px}
+  .itin-row{border-top:0;padding:12px 16px}
+  .itin-row+.itin-row{background:linear-gradient(var(--ios-sep),var(--ios-sep)) 16px 0/calc(100% - 16px) .5px no-repeat}
+  .itin-time{font-size:15px;font-weight:600;color:var(--plum)}
+  .itin-place b{font-size:17px;font-weight:600}
+  .itin-note{font-size:15px;color:var(--ios-label2)}
+  .itin-shops-cell li{padding:2px 0}
+  .itin-shops-cell li>span{font-size:17px}.itin-shops-cell li small{font-size:15px;color:var(--ios-label2)}
+  .itin-check svg,.itin-check i{width:24px;height:24px}
+  .itin-check svg{color:var(--plum)}
+  .itin button.ghost{padding:8px 5px;min-width:32px;min-height:36px}
+  .itin-actions{gap:0}
+  .itin-addshop{min-height:32px;padding:4px 12px;border:0;border-radius:999px;background:var(--ios-fill);font-size:15px;font-weight:500;color:var(--plum)}
+  .itin-form,.itin-editrow{border:0;border-radius:12px}
+  .itin-form input,.itin-editrow input,.itin-shopform input{height:44px;border:0;border-radius:10px;background:var(--ios-fill);font-size:17px}
+  .itin-form-actions button,.itin-shopform button{height:44px;border-radius:12px;font-size:17px}
+  .itin-form-actions button:not(.primary),.itin-shopform button:not(.primary){border:0;background:var(--ios-fill)}
+}
