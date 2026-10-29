@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Calculator,
+  Ellipsis,
+  ExternalLink,
   ListChecks,
   CalendarDays,
   ChevronDown,
@@ -202,6 +204,7 @@ export default function Home() {
 }
 export function Dashboard() {
   const [nav, setNav] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [memberLoading, setMemberLoading] = useState(false);
@@ -1414,6 +1417,20 @@ export function Dashboard() {
           </button>
         ))}
       </nav>
+      {moreOpen && (
+        <div className="sheet-backdrop" onClick={() => setMoreOpen(false)}>
+          <div className="sheet" role="dialog" aria-modal="true" aria-label="Menu lainnya" onClick={(e) => e.stopPropagation()}>
+            <div className="sheet-grabber" />
+            <ul className="sheet-list">
+              <li><button onClick={() => { switchView("trip"); setVariantProduct(null); setMoreOpen(false); window.history.pushState({}, "", "/dashboard"); window.scrollTo(0, 0); }}><MapPinned size={22} /><span>Trip</span><em>{trips.length}</em><ChevronRight size={18} /></button></li>
+              <li><button onClick={() => { switchView("content"); setVariantProduct(null); setMoreOpen(false); window.history.pushState({}, "", "/dashboard/content"); window.scrollTo(0, 0); }}><CalendarDays size={22} /><span>Content plan</span><ChevronRight size={18} /></button></li>
+              <li><a href="/" target="_blank" rel="noreferrer"><ExternalLink size={22} /><span>Lihat katalog publik</span></a></li>
+            </ul>
+            <button className="sheet-danger" onClick={() => supabase.auth.signOut()}>Keluar</button>
+            <button className="sheet-cancel" onClick={() => setMoreOpen(false)}>Tutup</button>
+          </div>
+        </div>
+      )}
       <main>
         <header className="topbar">
           <button className="menu-btn" onClick={() => setNav(true)}>
@@ -1424,6 +1441,9 @@ export function Dashboard() {
             <h1>{{dashboard:"Halo, Ni'mah",orders:"Orders",itinerary:"Itinerary",calculator:"Kalkulator",catalogue:"Katalog",product:"Katalog",trip:"Trip",content:"Content plan"}[view]}</h1>
           </div>
           <div className="top-actions">
+            <button className="more-btn" aria-label="Menu lainnya" aria-haspopup="dialog" onClick={() => setMoreOpen(true)}>
+              <Ellipsis size={22} />
+            </button>
             <button
               className="logout-btn"
               onClick={() => supabase.auth.signOut()}

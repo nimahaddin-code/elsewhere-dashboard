@@ -2265,3 +2265,98 @@ button{font-family:inherit;touch-action:manipulation}
   .itin-leg{padding:8px 16px;background:var(--ios-fill);border-top:0;font-size:15px;color:var(--ios-label2)}
   .itin-map{font-size:15px;font-weight:500}
 }
+
+/* Checklist rows: keep legacy `.task-list button` grid rules from clipping the real rows */
+.task-list .task-row .task-main{display:flex;grid-template-columns:none;width:auto;border-bottom:0;background:none;padding:10px 4px;gap:10px;align-items:center}
+.task-list .task-row .task-main>span:last-child{font-size:14px;color:var(--ink)}
+.task-list .task-row .task-main small{font-size:11px}
+.task-list .task-row.done .task-main>span:last-child{text-decoration:line-through;color:var(--muted)}
+.task-list .task-row .task-del{display:block;width:auto;grid-template-columns:none;border:0;background:none;padding:8px}
+.task-list .task-row{border-bottom:1px solid #f0ebed}
+.more-btn,.sheet-backdrop{display:none}
+
+/* ===== Mobile app shell: More sheet, compact screens ===== */
+@media (max-width:760px){
+  .topbar .menu-btn{display:none}
+  .topbar .top-actions .logout-btn{display:none}
+  .more-btn{display:grid;place-items:center;width:34px;height:34px;margin-right:-4px;border:0;border-radius:50%;background:rgba(118,118,128,.12);color:var(--plum)}
+  .topbar .top-actions{display:flex;align-items:center;margin-left:auto}
+  .metric{padding:14px}
+  .metric strong{margin:6px 0 4px}
+  .metric span{line-height:1.35}
+  .commerce-trip-bar>a{display:none}
+  .task-list .task-row{background:none}
+  .task-list .task-row+.task-row{background:linear-gradient(var(--ios-sep),var(--ios-sep)) 34px 0/calc(100% - 34px) .5px no-repeat}
+  .task-list .task-row{border-bottom:0}
+  .task-list .task-row .task-main>span:last-child{font-size:17px}
+  .task-list .task-row .task-main small{font-size:13px;color:var(--ios-label2)}
+
+  /* Bottom sheet */
+  .sheet-backdrop{display:flex;position:fixed;inset:0;z-index:40;align-items:flex-end;background:rgba(0,0,0,.4);animation:sheet-fade .2s ease}
+  .sheet{width:100%;max-height:85dvh;overflow:auto;padding:8px 16px calc(12px + env(safe-area-inset-bottom));background:var(--ios-bg);border-radius:14px 14px 0 0;animation:sheet-up .28s cubic-bezier(.32,.72,0,1)}
+  .sheet-grabber{width:36px;height:5px;margin:0 auto 12px;border-radius:3px;background:rgba(60,60,67,.3)}
+  .sheet-list{list-style:none;margin:0 0 12px;padding:0;background:#fff;border-radius:12px;overflow:hidden}
+  .sheet-list li+li{background:linear-gradient(var(--ios-sep),var(--ios-sep)) 52px 0/calc(100% - 52px) .5px no-repeat}
+  .sheet-list button,.sheet-list a{display:flex;align-items:center;gap:14px;width:100%;min-height:52px;padding:0 16px;border:0;background:none;font-size:17px;color:#000;text-decoration:none;text-align:left}
+  .sheet-list svg{color:var(--plum);flex:0 0 auto}
+  .sheet-list span{flex:1}
+  .sheet-list em{font-style:normal;color:var(--ios-label2)}
+  .sheet-list button svg:last-child{color:#c7c7cc}
+  .sheet-danger,.sheet-cancel{display:block;width:100%;min-height:52px;margin-bottom:8px;border:0;border-radius:12px;background:#fff;font-size:17px}
+  .sheet-danger{color:#ff3b30}
+  .sheet-cancel{font-weight:600;color:var(--plum)}
+  @keyframes sheet-up{from{transform:translateY(100%)}to{transform:none}}
+  @keyframes sheet-fade{from{opacity:0}to{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.sheet,.sheet-backdrop{animation:none}}
+
+  /* Home: calculator lives in the Hitung tab; keep targets/rates as grouped rows */
+  .finance-panel{display:none}
+  .goal-panel{display:block;padding:20px}
+  .goal-settings{display:block;margin-top:18px;background:#ffffff14;border-radius:12px;overflow:hidden}
+  .goal-settings label{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;padding:0 14px;font-size:15px;color:#fff}
+  .goal-settings label+label{border-top:.5px solid #ffffff2e}
+  .goal-settings input{width:50%;margin:0;border:0;background:none;padding:0;text-align:right;font-size:17px;color:#fff;height:44px}
+  .goal-main>strong{font:700 34px/1.1 -apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;letter-spacing:.3px}
+
+  /* Katalog: list first, no marketing hero or stat cards */
+  .catalogue-hero{display:block;background:none;padding:0;min-height:0;border:0;margin:0 0 12px}
+  .catalogue-hero>div:first-child{display:none}
+  .catalogue-hero>div:last-child{display:block}
+  .catalogue-hero small{display:none}
+  .catalogue-hero button{width:100%;justify-content:center;height:50px;border:0;border-radius:14px;background:var(--plum);color:#fff;font-size:17px;font-weight:600}
+  .catalogue-summary{display:none}
+}
+@media (max-width:760px){
+  .capacity .panel-head>svg{display:none}
+  .capacity label{display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:0 14px;border-radius:12px;background:var(--ios-bg);font-size:17px;color:#000}
+  .capacity label input{width:80px;height:36px;border:0;border-radius:8px;background:#fff;text-align:right;font-size:17px;padding:0 10px}
+  .capacity-copy b{font-size:17px}.capacity-copy span{font-size:15px;color:var(--ios-label2)}
+}
+@media (max-width:760px){
+  /* Katalog search + filters: iOS search field and a scrollable row of filter pills */
+  .catalogue-organizer.panel{background:none;padding:0;margin-bottom:12px}
+  .catalogue-organizer .dashboard-catalogue-search label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .catalogue-organizer .dashboard-catalogue-search>div{display:flex;align-items:center;gap:8px;height:40px;padding:0 10px;border:0;border-radius:10px;background:var(--ios-fill)}
+  .catalogue-organizer .dashboard-catalogue-search input{flex:1;min-width:0;height:40px;border:0;background:none;padding:0;font-size:17px;outline:0}
+  .catalogue-organizer .dashboard-catalogue-search svg{color:var(--ios-label2);flex:0 0 auto}
+  .catalogue-organizer .dashboard-catalogue-controls{display:flex;gap:8px;margin:10px -16px 0;padding:0 16px 4px;overflow-x:auto;scrollbar-width:none}
+  .catalogue-organizer .dashboard-catalogue-controls::-webkit-scrollbar{display:none}
+  .catalogue-organizer .dashboard-catalogue-controls label{flex:0 0 auto;font-size:0}
+  .catalogue-organizer .dashboard-catalogue-controls select{width:auto;height:34px;border:0;border-radius:999px;background:#fff;padding:0 12px;font-size:15px;color:var(--plum)}
+  .catalogue-organizer .dashboard-catalogue-controls>button{flex:0 0 auto;height:34px;min-height:0;border:0;border-radius:999px;background:#fff;padding:0 14px;font-size:15px;color:var(--plum)}
+  .catalogue-organizer .dashboard-catalogue-results{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:0 4px;border:0}
+  .catalogue-organizer .dashboard-catalogue-results p{margin:0;font-size:13px;color:var(--ios-label2)}
+  .catalogue-organizer .dashboard-catalogue-results button{min-height:32px;border:0;background:none;font-size:15px;color:var(--plum);padding:0 8px}
+  .catalogue-organizer .dashboard-catalogue-results>div{display:flex;gap:0}
+}
+@media (max-width:760px){
+  /* Trip picker is already in the header row; keep only the "new trip" action here */
+  .trip-switcher>label{display:none}
+  .trip-switcher{margin-bottom:12px}
+  /* HIG: 44pt controls, 17pt text, readable labels (does not override component-specific rules) */
+  main input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),main select,main textarea{font-size:17px!important;min-height:44px;border-radius:10px}
+  main label{font-size:13px;color:var(--ios-label2)}
+  main select{padding-left:12px;padding-right:28px}
+  main :is(.panel-head,.generator-heading) button{min-height:36px}
+}
+@media (max-width:760px){.commerce-trip-bar>label{font-size:17px;color:#000}}
