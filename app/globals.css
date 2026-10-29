@@ -2254,3 +2254,14 @@ button{font-family:inherit;touch-action:manipulation}
   .itin-form-actions button,.itin-shopform button{height:44px;border-radius:12px;font-size:17px}
   .itin-form-actions button:not(.primary),.itin-shopform button:not(.primary){border:0;background:var(--ios-fill)}
 }
+
+/* Itinerary: location link and getting-there connector */
+.itin-map{display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:13px;font-weight:600;color:var(--plum);text-decoration:none}
+.itin-map:hover{text-decoration:underline}
+.itin-place{display:flex;flex-direction:column;align-items:flex-start}
+.itin-leg{display:flex;align-items:flex-start;gap:8px;padding:8px 14px;background:#f7f2f4;border-top:1px solid var(--line);color:var(--muted);font-size:13px;line-height:1.4}
+.itin-leg svg{flex:0 0 auto;margin-top:2px;color:var(--plum)}
+@media(max-width:760px){
+  .itin-leg{padding:8px 16px;background:var(--ios-fill);border-top:0;font-size:15px;color:var(--ios-label2)}
+  .itin-map{font-size:15px;font-weight:500}
+}

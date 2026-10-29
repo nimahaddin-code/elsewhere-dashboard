@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, CheckCircle2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, CheckCircle2, MapPin, Pencil, Plus, Route, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 type Shop = { id: string; name: string; items: string; done: boolean };
-type Stop = { id: string; day: number; position: number; place: string; note: string; shops: Shop[] };
+type Stop = { id: string; day: number; position: number; place: string; note: string; shops: Shop[]; map_url: string; getting_there: string };
 
 // Seeded notes start with the planned time, e.g. "19:40 · Pavilion ...".
 const timeRe = /^(\d{1,2}:\d{2})\s*·\s*/;
@@ -21,6 +21,7 @@ const dayDate = (departure: string | null | undefined, day: number, opts: Intl.D
   return d.toLocaleDateString("id-ID", opts);
 };
 
+const safeUrl = (u: string) => (/^https?:\/\//i.test(u.trim()) ? u.trim() : "");
 const clampDay = (v: string) => Math.min(60, Math.max(1, Math.floor(Number(v)) || 1));
 
 export default function ItineraryPanel({ tripCode, tripName, departureDate }: { tripCode: string; tripName?: string; departureDate?: string | null }) {
@@ -29,9 +30,9 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<number | "all">("all");
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ day: "1", time: "", place: "", note: "" });
+  const [draft, setDraft] = useState({ day: "1", time: "", place: "", note: "", url: "", leg: "" });
   const [editingStop, setEditingStop] = useState<string | null>(null);
-  const [stopDraft, setStopDraft] = useState({ day: "1", time: "", place: "", note: "" });
+  const [stopDraft, setStopDraft] = useState({ day: "1", time: "", place: "", note: "", url: "", leg: "" });
   const [addingShop, setAddingShop] = useState<string | null>(null);
   const [editingShop, setEditingShop] = useState<string | null>(null);
   const [shopDraft, setShopDraft] = useState({ name: "", items: "" });
@@ -39,7 +40,7 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
   const load = async () => {
     const { data, error: err } = await supabase
       .from("trip_itinerary_stops")
-      .select("id,day,position,place,note,shops")
+      .select("id,day,position,place,note,shops,map_url,getting_there")
       .eq("trip_code", tripCode)
       .order("day")
       .order("position")
@@ -70,9 +71,9 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
     if (!name) return;
     const day = clampDay(draft.day);
     const position = stops.filter((s) => s.day === day).length;
-    const { error: err } = await supabase.from("trip_itinerary_stops").insert({ trip_code: tripCode, day, position, place: name, note: joinNote(draft.time, draft.note) });
+    const { error: err } = await supabase.from("trip_itinerary_stops").insert({ trip_code: tripCode, day, position, place: name, note: joinNote(draft.time, draft.note), map_url: safeUrl(draft.url), getting_there: draft.leg.trim() });
     if (err) { setError("Gagal menambah tempat"); return; }
-    setDraft((d) => ({ ...d, time: "", place: "", note: "" }));
+    setDraft((d) => ({ ...d, time: "", place: "", note: "", url: "", leg: "" }));
     setAdding(false);
     await load();
   };
@@ -80,14 +81,14 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
   const startEditStop = (stop: Stop) => {
     const { time, rest } = splitNote(stop.note);
     setEditingStop(stop.id);
-    setStopDraft({ day: String(stop.day), time, place: stop.place, note: rest });
+    setStopDraft({ day: String(stop.day), time, place: stop.place, note: rest, url: stop.map_url || "", leg: stop.getting_there || "" });
   };
 
   const saveStop = async (stop: Stop) => {
     const name = stopDraft.place.trim();
     if (!name) return;
     const day = clampDay(stopDraft.day);
-    const patch: Record<string, unknown> = { place: name, note: joinNote(stopDraft.time, stopDraft.note) };
+    const patch: Record<string, unknown> = { place: name, note: joinNote(stopDraft.time, stopDraft.note), map_url: safeUrl(stopDraft.url), getting_there: stopDraft.leg.trim() };
     if (day !== stop.day) {
       patch.day = day;
       patch.position = stops.filter((s) => s.day === day).length;
@@ -155,6 +156,8 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
           <label>Jam<input type="time" value={draft.time} onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))} /></label>
           <label className="wide">Tempat<input value={draft.place} maxLength={120} placeholder="mis. Pavilion KL" onChange={(e) => setDraft((d) => ({ ...d, place: e.target.value }))} /></label>
           <label className="wide">Catatan<input value={draft.note} maxLength={450} placeholder="opsional" onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} /></label>
+          <label className="wide">Link lokasi (Google Maps)<input type="url" inputMode="url" value={draft.url} maxLength={500} placeholder="https://maps.google.com/…" onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))} /></label>
+          <label className="wide">Cara ke sini<input value={draft.leg} maxLength={300} placeholder="mis. Dari hotel: jalan kaki 5 menit" onChange={(e) => setDraft((d) => ({ ...d, leg: e.target.value }))} /></label>
           <div className="itin-form-actions">
             <button type="button" onClick={() => setAdding(false)}>Batal</button>
             <button type="submit" className="primary" disabled={!draft.place.trim()}>Simpan</button>
@@ -193,6 +196,8 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
                     <label>Jam<input type="time" value={stopDraft.time} onChange={(e) => setStopDraft((x) => ({ ...x, time: e.target.value }))} /></label>
                     <label className="wide">Tempat<input value={stopDraft.place} maxLength={120} onChange={(e) => setStopDraft((x) => ({ ...x, place: e.target.value }))} /></label>
                     <label className="wide">Catatan<input value={stopDraft.note} maxLength={450} onChange={(e) => setStopDraft((x) => ({ ...x, note: e.target.value }))} /></label>
+                    <label className="wide">Link lokasi (Google Maps)<input type="url" inputMode="url" value={stopDraft.url} maxLength={500} placeholder="https://maps.google.com/…" onChange={(e) => setStopDraft((x) => ({ ...x, url: e.target.value }))} /></label>
+                    <label className="wide">Cara ke sini<input value={stopDraft.leg} maxLength={300} onChange={(e) => setStopDraft((x) => ({ ...x, leg: e.target.value }))} /></label>
                     <div className="itin-form-actions">
                       <button type="button" onClick={() => setEditingStop(null)}>Batal</button>
                       <button type="submit" className="primary" disabled={!stopDraft.place.trim()}>Simpan</button>
@@ -201,9 +206,13 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
                 );
               }
               return (
-                <div className="itin-row" role="row" key={stop.id}>
+                <Fragment key={stop.id}>
+                {stop.getting_there && (
+                  <div className="itin-leg" role="row"><Route size={14} aria-hidden="true" /><span>{stop.getting_there}</span></div>
+                )}
+                <div className="itin-row" role="row">
                   <span className="itin-time" data-label="Jam">{time || "—"}</span>
-                  <span className="itin-place" data-label="Tempat"><b>{stop.place}</b></span>
+                  <span className="itin-place" data-label="Tempat"><b>{stop.place}</b>{safeUrl(stop.map_url) && <a className="itin-map" href={safeUrl(stop.map_url)} target="_blank" rel="noopener noreferrer"><MapPin size={13} aria-hidden="true" /> Buka di Maps</a>}</span>
                   <span className="itin-shops-cell" data-label="Toko & barang">
                     {stop.shops.length === 0 && addingShop !== stop.id && <em>Belum ada toko</em>}
                     <ul>
@@ -246,6 +255,7 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
                     <button className="ghost" aria-label={`Hapus ${stop.place}`} onClick={() => void removeStop(stop)}><Trash2 size={15} /></button>
                   </span>
                 </div>
+                </Fragment>
               );
             })}
           </div>
