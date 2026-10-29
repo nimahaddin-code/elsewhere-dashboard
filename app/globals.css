@@ -2080,10 +2080,12 @@ main {
 /* iPhone app-style bottom tab bar (small screens only) */
 .tabbar{display:none}
 @media (max-width:760px){
-  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:15;display:grid;grid-template-columns:repeat(5,1fr);background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+  .tabbar{position:fixed;left:0;right:0;bottom:0;transform:translateZ(0);z-index:15;display:grid;grid-template-columns:repeat(5,1fr);background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
   .tabbar button{display:grid;justify-items:center;gap:3px;border:0;background:none;padding:6px 0;color:var(--muted);font-size:10px;font-weight:600}
   .tabbar button.active{color:var(--plum)}
-  body{padding-bottom:calc(64px + env(safe-area-inset-bottom));-webkit-tap-highlight-color:transparent}
+  html,body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent}
+  /* Tab bar never moves: reserve its height inside main instead of padding body (which made short pages scroll). */
+  main{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
   .topbar{padding-top:max(0px,env(safe-area-inset-top))}
   input,select,textarea{font-size:16px}
 }
