@@ -281,12 +281,16 @@ function OrderDetail({
     if (!source) return '';
     return /^data:image\//.test(source) || /^https?:\/\//.test(source) ? source : '';
   };
-  const openWhatsApp = (text: string) => {
-    window.open(
-      `https://wa.me/${normalizePhone(order.phone)}?text=${encodeURIComponent(text)}`,
-      '_blank',
-      'noopener,noreferrer',
-    );
+  // Manual orders may have no WhatsApp number; then messages are copied to paste manually.
+  const hasPhone = Boolean(order.phone);
+  const whatsappLink = (text: string) => `https://wa.me/${normalizePhone(order.phone)}?text=${encodeURIComponent(text)}`;
+  const copyMessage = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage('Pesan disalin. Tempel ke chat customer.');
+    } catch {
+      setMessage('Tidak bisa menyalin pesan otomatis di perangkat ini.');
+    }
   };
   const action = async (work: () => Promise<void>) => {
     if (locked.current) return;
@@ -349,7 +353,7 @@ function OrderDetail({
               </div>
               <div>
                 <dt>WhatsApp</dt>
-                <dd>{order.phone}</dd>
+                <dd>{order.phone || '—'}</dd>
               </div>
               <div className="full-width">
                 <dt>Alamat</dt>
@@ -407,14 +411,24 @@ function OrderDetail({
                 </small>
                 <div className="payment-row-actions">
                   {payment.verified_at ? (
-                    <a
-                      className="payment-primary-action"
-                      href={`https://wa.me/${normalizePhone(order.phone)}?text=${encodeURIComponent(whatsappTemplates.paymentConfirmation)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Kirim ke WhatsApp
-                    </a>
+                    hasPhone ? (
+                      <a
+                        className="payment-primary-action"
+                        href={whatsappLink(whatsappTemplates.paymentConfirmation)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Kirim ke WhatsApp
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className="payment-primary-action"
+                        onClick={() => void copyMessage(whatsappTemplates.paymentConfirmation)}
+                      >
+                        Salin pesan konfirmasi
+                      </button>
+                    )
                   ) : (
                     <button
                       className="payment-primary-action"
@@ -424,11 +438,12 @@ function OrderDetail({
                           await rpc('commerce_verify_payment', {
                             p_payment_id: payment.id,
                           });
-                          window.open(
-                            `https://wa.me/${normalizePhone(order.phone)}?text=${encodeURIComponent(whatsappTemplates.paymentConfirmation)}`,
-                            '_blank',
-                            'noopener,noreferrer',
-                          );
+                          if (hasPhone)
+                            window.open(
+                              whatsappLink(whatsappTemplates.paymentConfirmation),
+                              '_blank',
+                              'noopener,noreferrer',
+                            );
                         })
                       }
                     >

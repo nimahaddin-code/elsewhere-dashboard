@@ -161,7 +161,8 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
     ].join("\n");
 
   const phoneDigits = order.phone.replace(/\D/g, "");
-  const canPlace = order.lines.length > 0 && order.customer.trim().length >= 2 && phoneDigits.length >= 9 && order.lines.every((l) => l.unitSell > 0 && l.name.trim());
+  const phoneOk = phoneDigits.length === 0 || (phoneDigits.length >= 9 && phoneDigits.length <= 15);
+  const canPlace = order.lines.length > 0 && order.customer.trim().length >= 2 && phoneOk && order.lines.every((l) => l.unitSell > 0 && l.name.trim());
   const placeOrder = async () => {
     if (!canPlace || placing) return;
     setPlacing(true);
@@ -296,8 +297,8 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
             <input type="text" autoComplete="off" placeholder="Bu Sari" value={order.customer} onChange={(e) => setOrder((o) => ({ ...o, customer: e.target.value }))} />
           </label>
           <label className="pc-customer">
-            No. WhatsApp
-            <input type="tel" inputMode="tel" autoComplete="off" placeholder="0812…" value={order.phone} onChange={(e) => setOrder((o) => ({ ...o, phone: e.target.value }))} />
+            No. WhatsApp (opsional)
+            <input type="tel" inputMode="tel" autoComplete="off" placeholder="Opsional" value={order.phone} onChange={(e) => setOrder((o) => ({ ...o, phone: e.target.value }))} />
           </label>
           <label className="pc-customer pc-wide">
             Alamat (boleh menyusul)
@@ -337,7 +338,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
               <div className="pc-sub"><dt>Total {totals.pcs} pcs · {(totals.grams / 1000).toLocaleString("id-ID", { maximumFractionDigits: 2 })} kg</dt><dd>{rupiah(totals.sell)}</dd></div>
               <div><dt>Total untung</dt><dd>{rupiah(totals.profit)}</dd></div>
             </dl>
-            {!canPlace && <p className="pc-hint">Isi nama dan no. WhatsApp untuk menyimpan ke Orders.</p>}
+            {!canPlace && <p className="pc-hint">{phoneOk ? "Isi nama customer untuk menyimpan ke Orders." : "No. WhatsApp harus 9-15 digit, atau kosongkan."}</p>}
             {placeError && <p className="pc-error" role="alert">{placeError}</p>}
             <div className="pc-order-actions">
               <button type="button" onClick={() => copyText(orderText(), "order")}>{copied === "order" ? "Tersalin ✓" : "Salin rincian"}</button>

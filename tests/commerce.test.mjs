@@ -689,6 +689,18 @@ await test('editors can place manual multi-item orders that skip catalogue stock
   await owner();
   assert.equal((await db.query('select status from orders where id=$1', [result.order_id])).rows[0].status, 'confirmed');
 });
+await test('manual orders accept a blank WhatsApp number after the optional-phone migration', async () => {
+  await owner();
+  await db.exec(await readFile(new URL('../supabase/migrations/202611060002_manual_order_optional_phone.sql', import.meta.url), 'utf8'));
+  const call = 'select commerce_place_manual_order($1,$2,$3,$4,$5,$6,$7) as data';
+  const items = JSON.stringify([{ name: 'Coklat', quantity: 1, unit_price: 45000 }]);
+  await role('authenticated', member, 'team@example.com');
+  const result = (await db.query(call, [crypto.randomUUID(), 'TRIP-001', items, 'Kak Rina', '', '', ''])).rows[0].data;
+  await assert.rejects(db.query(call, [crypto.randomUUID(), 'TRIP-001', items, 'Kak Rina', '123', '', '']), /9-15 digit/);
+  await owner();
+  assert.equal((await db.query('select phone from orders where id=$1', [result.order_id])).rows[0].phone, '');
+  await assert.rejects(db.query("update orders set phone='12' where id=$1", [result.order_id]), /orders_phone_check/);
+});
 await db.close();
 
 test('calculatePrice adds optional flat fee before rounding', () => {
