@@ -35,7 +35,7 @@ type OrderLine = {
 };
 // `id` is set when a legacy device-only draft is reopened; `requestId` makes a
 // retried save idempotent and is renewed whenever the draft changes.
-type ManualOrder = { id: string | null; requestId: string; customer: string; phone: string; address: string; lines: OrderLine[] };
+type ManualOrder = { id: string | null; requestId: string; customer: string; phone: string; address: string; extraShipping: number; lines: OrderLine[] };
 type SavedOrder = { id: string; customer: string; lines: OrderLine[]; savedAt: string };
 
 const num = (v: string) => (v === "" ? 0 : Math.max(0, Number(v) || 0));
@@ -87,7 +87,7 @@ const orderTotals = (lines: OrderLine[]) =>
     { pcs: 0, grams: 0, sell: 0, profit: 0 },
   );
 
-const newOrder = (): ManualOrder => ({ id: null, requestId: crypto.randomUUID(), customer: "", phone: "", address: "", lines: [] });
+const newOrder = (): ManualOrder => ({ id: null, requestId: crypto.randomUUID(), customer: "", phone: "", address: "", extraShipping: 0, lines: [] });
 const MAX_QTY = 20;
 
 export function PriceCalculator({ country, currency, symbol, rate, categories, tripCode, onOrderPlaced }: Props) {
@@ -137,6 +137,9 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
   const ready = unit.sell > 0;
   const marginAmount = unit.capital * (marginPct / 100);
   const totals = orderTotals(order.lines);
+  // Domestic shipping outside Bali, entered by hand; passed through at cost (no margin).
+  const extraShipping = order.extraShipping || 0;
+  const grandTotal = totals.sell + extraShipping;
 
   const copyText = async (text: string, what: "price" | "order") => {
     try {
@@ -172,7 +175,8 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
     [
       `Order${order.customer.trim() ? ` ${order.customer.trim()}` : ""}`,
       ...order.lines.map((l, i) => `${i + 1}. ${l.name} x${l.qty} @ ${rupiah(l.unitSell)} = ${rupiah(l.unitSell * l.qty)}`),
-      `Total ${totals.pcs} pcs: ${rupiah(totals.sell)}`,
+      ...(extraShipping > 0 ? [`Ongkir luar Bali: ${rupiah(extraShipping)}`] : []),
+      `Total ${totals.pcs} pcs: ${rupiah(grandTotal)}`,
     ].join("\n");
 
   const phoneDigits = order.phone.replace(/\D/g, "");
@@ -185,12 +189,15 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
     const { data, error } = await supabase.rpc("commerce_place_manual_order", {
       p_request_id: order.requestId,
       p_trip_code: tripCode,
-      p_items: order.lines.map((l) => ({
-        name: l.name.trim(),
-        quantity: l.qty,
-        unit_price: l.unitSell,
-        snapshot: { category: l.category, shipping_mode: l.mode, local_price: l.localPrice, grams: l.grams, unit_capital: l.unitCapital, rate },
-      })),
+      p_items: [
+        ...order.lines.map((l) => ({
+          name: l.name.trim(),
+          quantity: l.qty,
+          unit_price: l.unitSell,
+          snapshot: { category: l.category, shipping_mode: l.mode, local_price: l.localPrice, grams: l.grams, unit_capital: l.unitCapital, rate },
+        })),
+        ...(extraShipping > 0 ? [{ name: "Ongkir luar Bali", quantity: 1, unit_price: extraShipping, snapshot: { type: "domestic_shipping" } }] : []),
+      ],
       p_name: order.customer.trim(),
       p_phone: order.phone,
       p_address: order.address,
@@ -351,8 +358,14 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
         )}
         {order.lines.length > 0 && (
           <>
+            <label className="pc-customer">
+              Ongkir tambahan luar Bali (Rp)
+              <input type="number" inputMode="numeric" min={0} placeholder="0 — kosongkan kalau di Bali" value={order.extraShipping || ""} onChange={(e) => setOrder((o) => ({ ...o, extraShipping: num(e.target.value) }))} />
+            </label>
             <dl className="pc-lines">
-              <div className="pc-sub"><dt>Total {totals.pcs} pcs · {(totals.grams / 1000).toLocaleString("id-ID", { maximumFractionDigits: 2 })} kg</dt><dd>{rupiah(totals.sell)}</dd></div>
+              {extraShipping > 0 && <div><dt>Subtotal barang</dt><dd>{rupiah(totals.sell)}</dd></div>}
+              {extraShipping > 0 && <div><dt>Ongkir luar Bali</dt><dd>{rupiah(extraShipping)}</dd></div>}
+              <div className="pc-sub"><dt>Total {totals.pcs} pcs · {(totals.grams / 1000).toLocaleString("id-ID", { maximumFractionDigits: 2 })} kg</dt><dd>{rupiah(grandTotal)}</dd></div>
               <div><dt>Total untung</dt><dd>{rupiah(totals.profit)}</dd></div>
             </dl>
             {!canPlace && <p className="pc-hint">{phoneOk ? "Isi nama customer untuk menyimpan ke Orders." : "No. WhatsApp harus 9-15 digit, atau kosongkan."}</p>}
