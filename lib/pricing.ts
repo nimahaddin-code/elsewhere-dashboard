@@ -55,6 +55,16 @@ export const shippingPerKg = (mode: ShippingMode, rate: number) => {
   const s = SHIPPING_PER_10KG[mode];
   return (s.inLocalCurrency ? s.amount * rate : s.amount) / 10;
 };
+// Accepts "14.90", "14,90" and "1.234,50"/"1,234.50": the last separator is the decimal point.
+export function parseDecimal(raw: string) {
+  const v = raw.replace(/\s/g, '');
+  if (!v) return 0;
+  const last = Math.max(v.lastIndexOf(','), v.lastIndexOf('.'));
+  const normalized =
+    last < 0 ? v : `${v.slice(0, last).replace(/[.,]/g, '')}.${v.slice(last + 1)}`;
+  const n = Number(normalized);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
 export const rupiah = (n: number) =>
   new Intl.NumberFormat('id-ID', {
     style: 'currency',

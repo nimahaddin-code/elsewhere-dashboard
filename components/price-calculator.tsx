@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { parseDecimal } from "../lib/pricing";
 import {
   SHIPPING_PER_10KG,
   calculatePrice,
@@ -109,7 +110,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
   const cargoPerKg = rate > 0 ? shippingPerKg(mode, rate) : 0;
 
   const unit = calculatePrice({
-    localPrice: num(price),
+    localPrice: parseDecimal(price),
     grams: num(grams),
     category,
     margin: marginPct,
@@ -140,7 +141,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
       name: name.trim() || `${category} ${order.lines.length + 1}`,
       category,
       mode,
-      localPrice: num(price),
+      localPrice: parseDecimal(price),
       grams: num(grams),
       qty: Math.min(MAX_QTY, quantity),
       unitCapital: unit.capital,
@@ -242,7 +243,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
         </label>
         <label>
           Harga barang ({currency})
-          <input type="number" inputMode="decimal" min={0} placeholder="200" value={price} onChange={(e) => set({ price: e.target.value })} />
+          <input type="text" inputMode="decimal" placeholder="14,90" value={price} onChange={(e) => set({ price: e.target.value })} />
         </label>
         <label>
           Berat (gram)

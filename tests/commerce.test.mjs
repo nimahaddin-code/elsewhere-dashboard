@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { calculatePrice } from '../lib/pricing.ts';
+import { calculatePrice, parseDecimal } from '../lib/pricing.ts';
 import {
   createOrderDraftSnapshot,
   getOrderLifecycle,
@@ -695,4 +695,10 @@ test('calculatePrice adds optional flat fee before rounding', () => {
   const base = { localPrice: 200, grams: 0, category: 'Pakaian', margin: 25, rate: 3700, fashionCargo: 0, otherCargo: 0 };
   assert.equal(calculatePrice(base).sell, 925000);
   assert.equal(calculatePrice({ ...base, flatFee: 5000 }).sell, 930000);
+});
+
+test('parseDecimal accepts comma or dot decimals for local prices', () => {
+  for (const [raw, expected] of [['14.90', 14.9], ['14,90', 14.9], ['1.234,50', 1234.5], ['1,234.50', 1234.5], ['200', 200], ['14,', 14], ['', 0], ['abc', 0]]) {
+    assert.equal(parseDecimal(raw), expected, raw);
+  }
 });
