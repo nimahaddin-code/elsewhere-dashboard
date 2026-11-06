@@ -27,7 +27,7 @@ export default function OrdersPanel({
   const [filter, setFilter] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
-    return window.sessionStorage.getItem(`orders-selected-${tripCode}`) || null;
+    return window.localStorage.getItem(`orders-selected-${tripCode}`) || null;
   });
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -67,9 +67,9 @@ export default function OrdersPanel({
   useEffect(() => {
     if (typeof window !== 'undefined') {
       if (selectedId) {
-        window.sessionStorage.setItem(`orders-selected-${tripCode}`, selectedId);
+        window.localStorage.setItem(`orders-selected-${tripCode}`, selectedId);
       } else {
-        window.sessionStorage.removeItem(`orders-selected-${tripCode}`);
+        window.localStorage.removeItem(`orders-selected-${tripCode}`);
       }
     }
   }, [selectedId, tripCode]);
@@ -132,7 +132,7 @@ export default function OrdersPanel({
                   onClick={() => {
                     setSelectedId(order.id);
                     if (typeof window !== 'undefined') {
-                      window.sessionStorage.setItem(`orders-selected-${tripCode}`, order.id);
+                      window.localStorage.setItem(`orders-selected-${tripCode}`, order.id);
                     }
                   }}
                 >
@@ -191,7 +191,7 @@ function OrderDetail({
   const [savedDraft, setSavedDraft] = useState<Record<string, string>>(() => {
     if (typeof window === 'undefined') return {};
     try {
-      return JSON.parse(window.sessionStorage.getItem(`order-draft-${order.id}`) || '{}');
+      return JSON.parse(window.localStorage.getItem(`order-draft-${order.id}`) || '{}');
     } catch {
       return {};
     }
@@ -264,7 +264,7 @@ function OrderDetail({
     const snapshot = createOrderDraftSnapshot(draft);
     setSavedDraft(snapshot);
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem(`order-draft-${order.id}`, JSON.stringify(snapshot));
+      window.localStorage.setItem(`order-draft-${order.id}`, JSON.stringify(snapshot));
     }
   };
   const readPreview = (file: File | null) => new Promise<string | null>((resolve) => {

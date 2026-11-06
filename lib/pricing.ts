@@ -14,12 +14,14 @@ export function calculatePrice(input: {
   fashionCargo: number;
   otherCargo: number;
   flatFee?: number;
+  // Overrides the category-based trip cargo rate (Rp per kg).
+  cargoPerKg?: number;
 }) {
   const flatFee = input.flatFee ?? 0;
   const margin = input.margin ?? defaultMargin(input.category);
-  const cargoRate = isFashion(input.category)
-    ? input.fashionCargo
-    : input.otherCargo;
+  const cargoRate =
+    input.cargoPerKg ??
+    (isFashion(input.category) ? input.fashionCargo : input.otherCargo);
   const valid =
     [input.localPrice, input.grams, margin, cargoRate, flatFee].every(
       (n) => Number.isFinite(n) && n >= 0,
@@ -43,6 +45,16 @@ export function calculatePrice(input: {
     sell: sell.toNumber(),
   };
 }
+// Calculator shipping options. Both carriers quote per 10 kg.
+export type ShippingMode = 'handcarry' | 'paket';
+export const SHIPPING_PER_10KG = {
+  handcarry: { label: 'Hand carry', amount: 165, inLocalCurrency: true },
+  paket: { label: 'Paket', amount: 90000, inLocalCurrency: false },
+} as const;
+export const shippingPerKg = (mode: ShippingMode, rate: number) => {
+  const s = SHIPPING_PER_10KG[mode];
+  return (s.inLocalCurrency ? s.amount * rate : s.amount) / 10;
+};
 export const rupiah = (n: number) =>
   new Intl.NumberFormat('id-ID', {
     style: 'currency',
