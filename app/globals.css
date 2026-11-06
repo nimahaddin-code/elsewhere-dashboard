@@ -1731,6 +1731,17 @@ main {
 .order-status-step.done { background:#7d4d5e !important;color:#fff !important;border-color:#7d4d5e !important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15); }
 .order-status-step.current { background:#fff !important;color:#624153 !important;border:2px solid #624153 !important;box-shadow:none !important; }
 .order-status-step.upcoming { background:#f7f1f3 !important;color:#a28791 !important;border-color:#e1ccd6 !important; }
+.order-status-step:not(.terminal-action) { cursor:pointer;min-height:36px; }
+.order-status-step:not(.terminal-action):disabled { cursor:not-allowed; }
+.order-status-step.review { outline:2px dashed #624153;outline-offset:2px; }
+.order-status-transition-block label { display:grid;gap:5px;font-size:12px;font-weight:600;color:#695d66; }
+.order-status-transition-block input,.payment-record-form input { height:42px;border:1px solid #e1ccd6;border-radius:10px;padding:0 12px;font-size:16px;background:#fff;color:#2d2126;min-width:0; }
+.order-status-confirm-actions { display:flex;flex-wrap:wrap;gap:8px; }
+.order-status-confirm-actions button { flex:1;min-height:44px;font-size:14px;font-weight:600; }
+.order-status-section > .commerce-primary { width:100%;margin-bottom:8px; }
+.payment-record-form { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;padding:12px;border:1px solid #ead5dd;border-radius:10px;background:#fffafc; }
+.payment-record-form label { display:grid;gap:5px;font-size:12px;font-weight:600;color:#695d66; }
+.payment-record-form button { grid-column:1/-1; }
 .order-status-step.terminal-action { cursor:pointer;background:#fff5f6;color:#923f52;border-color:#deb8c2;opacity:1; }
 .order-status-step.terminal-action.return { background:#fff8ed;color:#845b26;border-color:#e3c895; }
 .order-status-step.terminal-action:disabled { cursor:not-allowed;opacity:.35; }
@@ -1931,7 +1942,7 @@ main {
 .product-copy > div strong { color: var(--store-ink); font-size: 16px; }
 .product-copy > div small { color: var(--store-muted); font-size: 9px; }
 .commerce-help { color: var(--store-muted) !important; font-size: 10px !important; }
-.commerce-primary { border-radius: 999px; background: var(--store-ink); color: var(--store-ivory); font-size: 11px; }
+.storefront .commerce-primary { border-radius: 999px; background: var(--store-ink); color: var(--store-ivory); font-size: 11px; }
 .catalogue-empty { border: 1px dashed #d8ccc5; border-radius: 4px; background: #fff; }
 .storefront footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 28px max(24px, calc((100% - 1160px) / 2)); border-top: 1px solid var(--store-line); background: var(--store-blue); }
 .storefront footer .store-logo b { font-size: 24px; }

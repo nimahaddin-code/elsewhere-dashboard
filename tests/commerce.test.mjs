@@ -701,6 +701,34 @@ await test('manual orders accept a blank WhatsApp number after the optional-phon
   assert.equal((await db.query('select phone from orders where id=$1', [result.order_id])).rows[0].phone, '');
   await assert.rejects(db.query("update orders set phone='12' where id=$1", [result.order_id]), /orders_phone_check/);
 });
+await test('editors can jump order status directly, step back, and still need payment to ship', async () => {
+  await owner();
+  await db.exec(await readFile(new URL('../supabase/migrations/202611060003_order_status_direct.sql', import.meta.url), 'utf8'));
+  await role('authenticated', member, 'team@example.com');
+  const placed = (await db.query('select commerce_place_manual_order($1,$2,$3,$4,$5,$6,$7) as data',
+    [crypto.randomUUID(), 'TRIP-001', JSON.stringify([{ name: 'Tas', quantity: 1, unit_price: 200000 }]), 'Kak Dewi', '', '', ''])).rows[0].data;
+  const id = placed.order_id;
+  const statusOf = async () => { await owner(); const s = (await db.query('select status,courier from orders where id=$1', [id])).rows[0]; await role('authenticated', member, 'team@example.com'); return s; };
+  const set = (status, courier = null, tracking = null) => db.query('select commerce_set_order_status($1,$2,$3,$4)', [id, status, courier, tracking]);
+
+  await role('authenticated', outsider, 'viewer@example.com');
+  await assert.rejects(set('purchased'), /Akses ditolak/);
+  await role('authenticated', member, 'team@example.com');
+  await set('purchased');
+  assert.equal((await statusOf()).status, 'purchased');
+  await set('new');
+  assert.equal((await statusOf()).status, 'new');
+  await assert.rejects(set('shipped', 'JNE', 'RESI1'), /pembayaran/);
+
+  const payment = (await db.query("select commerce_record_payment($1,$2,200000,'Cash','') as id".replace("''", 'null'), [crypto.randomUUID(), id])).rows[0].id;
+  await db.query('select commerce_verify_payment($1)', [payment]);
+  await set('confirmed');
+  await assert.rejects(set('shipped'), /kurir/);
+  await set('shipped', 'JNE', 'RESI1');
+  assert.deepEqual(await statusOf(), { status: 'shipped', courier: 'JNE' });
+  await set('completed');
+  assert.equal((await statusOf()).status, 'completed');
+});
 await db.close();
 
 test('calculatePrice adds optional flat fee before rounding', () => {
