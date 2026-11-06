@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 import {
   SHIPPING_PER_10KG,
   calculatePrice,
@@ -16,6 +17,8 @@ type Props = {
   symbol: string;
   rate: number;
   categories: CategoryOption[];
+  tripCode: string;
+  onOrderPlaced: (orderId: string) => void;
 };
 
 type OrderLine = {
@@ -29,7 +32,9 @@ type OrderLine = {
   unitCapital: number;
   unitSell: number;
 };
-type ManualOrder = { id: string | null; customer: string; lines: OrderLine[] };
+// `id` is set when a legacy device-only draft is reopened; `requestId` makes a
+// retried save idempotent and is renewed whenever the draft changes.
+type ManualOrder = { id: string | null; requestId: string; customer: string; phone: string; address: string; lines: OrderLine[] };
 type SavedOrder = { id: string; customer: string; lines: OrderLine[]; savedAt: string };
 
 const num = (v: string) => (v === "" ? 0 : Math.max(0, Number(v) || 0));
@@ -67,9 +72,10 @@ const orderTotals = (lines: OrderLine[]) =>
     { pcs: 0, grams: 0, sell: 0, profit: 0 },
   );
 
-const emptyOrder: ManualOrder = { id: null, customer: "", lines: [] };
+const newOrder = (): ManualOrder => ({ id: null, requestId: crypto.randomUUID(), customer: "", phone: "", address: "", lines: [] });
+const MAX_QTY = 20;
 
-export function PriceCalculator({ country, currency, symbol, rate, categories }: Props) {
+export function PriceCalculator({ country, currency, symbol, rate, categories, tripCode, onOrderPlaced }: Props) {
   const initialForm = {
     category: categories[0]?.name ?? "Pakaian",
     name: "",
@@ -81,7 +87,10 @@ export function PriceCalculator({ country, currency, symbol, rate, categories }:
     mode: "paket" as ShippingMode,
   };
   const [form, setForm] = useStored("elsewhere-calculator", (s) => ({ ...initialForm, ...(s as object) }), initialForm);
-  const [order, setOrder] = useStored("elsewhere-manual-order", (s) => ({ ...emptyOrder, ...(s as object) }), emptyOrder);
+  const [order, setStoredOrder] = useStored("elsewhere-manual-order", (s) => ({ ...newOrder(), ...(s as object) }), newOrder());
+  const [placing, setPlacing] = useState(false);
+  const [placeError, setPlaceError] = useState("");
+  const setOrder = (fn: (o: ManualOrder) => ManualOrder) => setStoredOrder((o) => ({ ...fn(o), requestId: crypto.randomUUID() }));
   const [savedOrders, setSavedOrders] = useStored<SavedOrder[]>("elsewhere-manual-orders", (s) => (Array.isArray(s) ? s : []), []);
   const [copied, setCopied] = useState<"price" | "order" | null>(null);
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
@@ -133,7 +142,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories }:
       mode,
       localPrice: num(price),
       grams: num(grams),
-      qty: quantity,
+      qty: Math.min(MAX_QTY, quantity),
       unitCapital: unit.capital,
       unitSell: unit.sell,
     };
@@ -151,25 +160,47 @@ export function PriceCalculator({ country, currency, symbol, rate, categories }:
       `Total ${totals.pcs} pcs: ${rupiah(totals.sell)}`,
     ].join("\n");
 
-  const saveOrder = () => {
-    if (!order.lines.length) return;
-    const id = order.id ?? newId();
-    const saved: SavedOrder = { id, customer: order.customer.trim(), lines: order.lines, savedAt: new Date().toISOString() };
-    setSavedOrders((list) => [saved, ...list.filter((o) => o.id !== id)]);
-    setOrder(emptyOrder);
+  const phoneDigits = order.phone.replace(/\D/g, "");
+  const canPlace = order.lines.length > 0 && order.customer.trim().length >= 2 && phoneDigits.length >= 9 && order.lines.every((l) => l.unitSell > 0 && l.name.trim());
+  const placeOrder = async () => {
+    if (!canPlace || placing) return;
+    setPlacing(true);
+    setPlaceError("");
+    const { data, error } = await supabase.rpc("commerce_place_manual_order", {
+      p_request_id: order.requestId,
+      p_trip_code: tripCode,
+      p_items: order.lines.map((l) => ({
+        name: l.name.trim(),
+        quantity: l.qty,
+        unit_price: l.unitSell,
+        snapshot: { category: l.category, shipping_mode: l.mode, local_price: l.localPrice, grams: l.grams, unit_capital: l.unitCapital, rate },
+      })),
+      p_name: order.customer.trim(),
+      p_phone: order.phone,
+      p_address: order.address,
+    });
+    setPlacing(false);
+    if (error || !data?.order_id) {
+      setPlaceError(error?.message || "Order belum tersimpan. Coba lagi.");
+      return;
+    }
+    if (order.id) setSavedOrders((list) => list.filter((o) => o.id !== order.id));
+    setStoredOrder(newOrder());
+    onOrderPlaced(data.order_id);
   };
   const clearOrder = () => {
-    if (!window.confirm(order.id ? "Tutup order ini? Perubahan yang belum disimpan hilang." : "Kosongkan order ini? Produk yang belum disimpan akan hilang.")) return;
-    setOrder(emptyOrder);
+    if (order.lines.length && !window.confirm("Kosongkan order ini? Produk yang belum disimpan akan hilang.")) return;
+    setStoredOrder(newOrder());
+    setPlaceError("");
   };
   const openSaved = (saved: SavedOrder) => {
     if (order.lines.length && order.id !== saved.id && !window.confirm("Order yang sedang dibuat belum disimpan. Ganti dengan order ini?")) return;
-    setOrder({ id: saved.id, customer: saved.customer, lines: saved.lines });
+    setOrder(() => ({ ...newOrder(), id: saved.id, customer: saved.customer, lines: saved.lines }));
   };
   const deleteSaved = (saved: SavedOrder) => {
     if (!window.confirm(`Hapus order ${saved.customer || "tanpa nama"}?`)) return;
     setSavedOrders((list) => list.filter((o) => o.id !== saved.id));
-    if (order.id === saved.id) setOrder((o) => ({ ...o, id: null }));
+    if (order.id === saved.id) setStoredOrder((o) => ({ ...o, id: null }));
   };
 
   return (
@@ -256,13 +287,23 @@ export function PriceCalculator({ country, currency, symbol, rate, categories }:
 
       <section className="pc-order" aria-label="Order manual">
         <header>
-          <h3>Order manual{order.id ? " · diedit" : ""}</h3>
+          <h3>Order manual</h3>
           <small>{order.lines.length} produk</small>
         </header>
-        <label className="pc-customer">
-          Customer
-          <input type="text" placeholder="Nama / no. WA" value={order.customer} onChange={(e) => setOrder((o) => ({ ...o, customer: e.target.value }))} />
-        </label>
+        <div className="pc-customer-fields">
+          <label className="pc-customer">
+            Nama customer
+            <input type="text" autoComplete="off" placeholder="Bu Sari" value={order.customer} onChange={(e) => setOrder((o) => ({ ...o, customer: e.target.value }))} />
+          </label>
+          <label className="pc-customer">
+            No. WhatsApp
+            <input type="tel" inputMode="tel" autoComplete="off" placeholder="0812…" value={order.phone} onChange={(e) => setOrder((o) => ({ ...o, phone: e.target.value }))} />
+          </label>
+          <label className="pc-customer pc-wide">
+            Alamat (boleh menyusul)
+            <input type="text" autoComplete="off" placeholder="Opsional" value={order.address} onChange={(e) => setOrder((o) => ({ ...o, address: e.target.value }))} />
+          </label>
+        </div>
         {order.lines.length === 0 ? (
           <p className="pc-empty">Hitung harga di atas lalu tekan “Tambah ke order”. Satu order bisa banyak produk.</p>
         ) : (
@@ -278,7 +319,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories }:
                   <div className="pc-qty">
                     <button type="button" aria-label="Kurangi" onClick={() => updateLine(l.id, { qty: Math.max(1, l.qty - 1) })}>−</button>
                     <span>{l.qty}</span>
-                    <button type="button" aria-label="Tambah" onClick={() => updateLine(l.id, { qty: l.qty + 1 })}>+</button>
+                    <button type="button" aria-label="Tambah" disabled={l.qty >= MAX_QTY} onClick={() => updateLine(l.id, { qty: Math.min(MAX_QTY, l.qty + 1) })}>+</button>
                   </div>
                   <label>
                     Rp
@@ -290,18 +331,18 @@ export function PriceCalculator({ country, currency, symbol, rate, categories }:
             ))}
           </ul>
         )}
-        {(order.lines.length > 0 || order.id) && (
+        {order.lines.length > 0 && (
           <>
-            {order.lines.length > 0 && (
-              <dl className="pc-lines">
-                <div className="pc-sub"><dt>Total {totals.pcs} pcs · {(totals.grams / 1000).toLocaleString("id-ID", { maximumFractionDigits: 2 })} kg</dt><dd>{rupiah(totals.sell)}</dd></div>
-                <div><dt>Total untung</dt><dd>{rupiah(totals.profit)}</dd></div>
-              </dl>
-            )}
+            <dl className="pc-lines">
+              <div className="pc-sub"><dt>Total {totals.pcs} pcs · {(totals.grams / 1000).toLocaleString("id-ID", { maximumFractionDigits: 2 })} kg</dt><dd>{rupiah(totals.sell)}</dd></div>
+              <div><dt>Total untung</dt><dd>{rupiah(totals.profit)}</dd></div>
+            </dl>
+            {!canPlace && <p className="pc-hint">Isi nama dan no. WhatsApp untuk menyimpan ke Orders.</p>}
+            {placeError && <p className="pc-error" role="alert">{placeError}</p>}
             <div className="pc-order-actions">
-              <button type="button" onClick={() => copyText(orderText(), "order")} disabled={!order.lines.length}>{copied === "order" ? "Tersalin ✓" : "Salin rincian"}</button>
-              <button type="button" className="primary" onClick={saveOrder} disabled={!order.lines.length}>Simpan order</button>
-              <button type="button" className="ghost" onClick={clearOrder}>{order.id ? "Tutup" : "Kosongkan"}</button>
+              <button type="button" onClick={() => copyText(orderText(), "order")}>{copied === "order" ? "Tersalin ✓" : "Salin rincian"}</button>
+              <button type="button" className="primary" onClick={placeOrder} disabled={!canPlace || placing}>{placing ? "Menyimpan…" : "Simpan ke Orders"}</button>
+              <button type="button" className="ghost" onClick={clearOrder}>Kosongkan</button>
             </div>
           </>
         )}
@@ -309,7 +350,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories }:
 
       {savedOrders.length > 0 && (
         <section className="pc-order" aria-label="Order tersimpan">
-          <header><h3>Order tersimpan</h3><small>{savedOrders.length}</small></header>
+          <header><h3>Draft lama di HP ini</h3><small>Buka lalu simpan ke Orders</small></header>
           <ul className="pc-saved">
             {savedOrders.map((s) => {
               const t = orderTotals(s.lines);
