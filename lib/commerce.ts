@@ -4,7 +4,7 @@ export type CatalogueVariant = {
   option2_value?: string | null;
   id: string;
   name: string;
-  sale_mode: 'stock' | 'preorder';
+  sale_mode: 'stock' | 'preorder' | 'manual';
   available: number | null;
   unit_price_idr: number | null;
 };

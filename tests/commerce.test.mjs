@@ -652,6 +652,43 @@ await test('editors can explicitly delete any order status and its ledger childr
     assert.equal((await db.query('select count(*)::int as n from order_payments where id=$1', [record.payment])).rows[0].n, 0);
   }
 });
+await test('editors can place manual multi-item orders that skip catalogue stock', async () => {
+  await owner();
+  await db.exec(await readFile(new URL('../supabase/migrations/202611060001_manual_orders.sql', import.meta.url), 'utf8'));
+  const token = crypto.randomUUID();
+  const items = [
+    { name: 'Kaos Padini', quantity: 2, unit_price: 150000, snapshot: { grams: 300, shipping_mode: 'paket' } },
+    { name: 'Coklat', quantity: 1, unit_price: 45000 },
+  ];
+  const args = [token, 'TRIP-001', JSON.stringify(items), 'Bu Sari', '0812-3456-7890', '', ''];
+  const call = 'select commerce_place_manual_order($1,$2,$3,$4,$5,$6,$7) as data';
+
+  await role('anon');
+  await assert.rejects(db.query(call, args), /permission denied/);
+  await role('authenticated', outsider, 'viewer@example.com');
+  await assert.rejects(db.query(call, args), /Akses ditolak/);
+
+  await role('authenticated', member, 'team@example.com');
+  const result = (await db.query(call, args)).rows[0].data;
+  assert.equal(Number(result.total_idr), 345000);
+  assert.deepEqual((await db.query(call, args)).rows[0].data, result);
+  await assert.rejects(db.query(call, [crypto.randomUUID(), 'TRIP-001', JSON.stringify([{ name: 'X', quantity: 21, unit_price: 1000 }]), 'Bu Sari', '081234567890', '', '']), /tidak valid/);
+  await assert.rejects(db.query(call, [crypto.randomUUID(), 'TRIP-001', JSON.stringify(items), 'Bu Sari', '12', '', '']), /nomor WhatsApp/);
+
+  await owner();
+  const order = (await db.query('select phone,address,status from orders where id=$1', [result.order_id])).rows[0];
+  assert.deepEqual(order, { phone: '6281234567890', address: 'Alamat menyusul', status: 'new' });
+  const rows = (await db.query('select product_id,variant_id,sale_mode,pricing_snapshot from order_items where order_id=$1 order by product_name desc', [result.order_id])).rows;
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].variant_id, null);
+  assert.equal(rows[0].sale_mode, 'manual');
+  assert.equal(rows[0].pricing_snapshot.shipping_mode, 'paket');
+
+  await role('authenticated', member, 'team@example.com');
+  await db.query("select commerce_update_order($1,'confirmed')", [result.order_id]);
+  await owner();
+  assert.equal((await db.query('select status from orders where id=$1', [result.order_id])).rows[0].status, 'confirmed');
+});
 await db.close();
 
 test('calculatePrice adds optional flat fee before rounding', () => {

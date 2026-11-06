@@ -2085,6 +2085,8 @@ main {
 .pc-order header{display:flex;align-items:baseline;justify-content:space-between}
 .pc-order h3{margin:0;font:20px Georgia,serif;color:var(--ink)}.pc-order header small{color:var(--muted);font-size:12px}
 .pc-customer{display:grid;gap:5px;color:var(--muted);font-size:12px;font-weight:600}
+.pc-customer-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pc-customer-fields .pc-wide{grid-column:1/-1}
+.pc-hint,.pc-error{margin:0;font-size:13px;color:var(--muted)}.pc-error{color:#b42318}
 .pc-customer input,.pc-line-head input,.pc-line-edit input{height:42px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:0 12px;color:var(--ink);font-size:16px;min-width:0}
 .pc-empty{margin:0;padding:14px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13px;text-align:center}
 .pc-order-lines,.pc-saved{list-style:none;margin:0;padding:0;display:grid;gap:8px}
