@@ -228,7 +228,7 @@ export function Dashboard() {
   });
   const saveDashboardState = () => {
     if (typeof window === "undefined") return;
-    sessionStorage.setItem("elsewhere-dashboard-state", JSON.stringify({
+    localStorage.setItem("elsewhere-dashboard-state", JSON.stringify({
       view,
       activeTripCode,
       scrollY: window.scrollY,
@@ -243,7 +243,7 @@ export function Dashboard() {
     }
 
     setView(next);
-    sessionStorage.setItem("elsewhere-dashboard-state", JSON.stringify({
+    localStorage.setItem("elsewhere-dashboard-state", JSON.stringify({
       view: next,
       activeTripCode,
       scrollY: scrollPositions.current[next] ?? 0,
@@ -401,7 +401,7 @@ export function Dashboard() {
   }, [user, isMember, activeTripCode, commerceRevision]);
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem("elsewhere-dashboard-state");
+      const saved = localStorage.getItem("elsewhere-dashboard-state");
       if (saved) {
         const parsed = JSON.parse(saved) as { view?: string; activeTripCode?: string; scrollY?: number; scrollPositions?: Record<string, number> };
         if (parsed.view && ["dashboard", "trip", "catalogue", "orders", "calculator", "itinerary"].includes(parsed.view)) setView(parsed.view as typeof view);
@@ -477,22 +477,35 @@ export function Dashboard() {
     }
     setSyncStatus("Tersinkron ke database");
   };
+  // Keyed on the email, not the user object: Supabase emits a new user object on
+  // every token refresh (e.g. when the app returns from background), which used to
+  // flash the access-check screen and unmount the whole dashboard.
+  const userEmail = (user?.email || "").toLowerCase();
   useEffect(() => {
-    if (!user) {
+    if (!userEmail) {
       setIsMember(false);
       return;
     }
     let active = true;
-    setMemberLoading(true);
+    let knownMember = false;
+    try { knownMember = localStorage.getItem("elsewhere-member") === userEmail; } catch { /* storage unavailable */ }
+    if (knownMember) setIsMember(true);
+    else setMemberLoading(true);
     supabase
       .from("workspace_members")
       .select("email,role")
-      .eq("email", (user.email || "").toLowerCase())
+      .eq("email", userEmail)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (!active) return;
+        // Keep a cached member in through transient network errors.
+        if (error && knownMember) { setMemberLoading(false); loadSharedData(activeTripCode); return; }
         setIsMember(!!data);
         setMemberLoading(false);
+        try {
+          if (data) localStorage.setItem("elsewhere-member", userEmail);
+          else localStorage.removeItem("elsewhere-member");
+        } catch { /* storage unavailable */ }
         if (data) loadSharedData(activeTripCode);
       });
     const channel = supabase
@@ -518,7 +531,7 @@ export function Dashboard() {
       active = false;
       supabase.removeChannel(channel);
     };
-  }, [user, activeTripCode]);
+  }, [userEmail, activeTripCode]);
   const submitAuth = async () => {
     if (!loginEmail.trim() || loginPassword.length < 8) return;
     setAuthMessage(
@@ -1456,7 +1469,7 @@ export function Dashboard() {
         </header>
         <div className="commerce-trip-bar"><label>Trip aktif <select value={activeTripCode} onChange={e => { setActiveTripCode(e.target.value); setVariantProduct(null); if(view === "product") switchView("catalogue"); }}>{trips.map(t => <option key={t.code} value={t.code}>{t.name} · {t.code}</option>)}</select></label><a href="/" target="_blank" rel="noreferrer">Lihat katalog ↗</a><output>{syncStatus}</output></div>
         {commerceError && <p role="alert" className="commerce-error">{commerceError}</p>}
-        {view === "itinerary" ? <ItineraryPanel tripCode={activeTripCode} tripName={activeTrip?.name} departureDate={activeTrip?.departure_date}/> : view === "calculator" ? <PriceCalculator country={activeTrip?.country || "Malaysia"} currency={currency} symbol={currencySymbol} rate={rate} fashionCargo={Number(activeTrip?.fashion_cargo_per_kg) || cargoRate} otherCargo={Number(activeTrip?.nonfashion_cargo_per_kg) || otherCargoRate} categories={categories}/> : view === "content" ? <ContentPlanGenerator products={catalogue} tripCountry={activeTrip?.country} sellingPrice={(product, variant) => productPricing({ local_price: variant?.local_price ?? product.local_price, price_thb: variant?.local_price ?? product.price_thb, weight_grams: variant?.weight_grams ?? product.weight_grams, category: product.category, margin_percent: product.margin_percent }).sell}/> : view === "orders" ? <OrdersPanel key={activeTripCode} tripCode={activeTripCode} onChange={() => setCommerceRevision(n => n + 1)}/> : view === "trip" ? (
+        {view === "itinerary" ? <ItineraryPanel tripCode={activeTripCode} tripName={activeTrip?.name} departureDate={activeTrip?.departure_date}/> : view === "calculator" ? <PriceCalculator country={activeTrip?.country || "Malaysia"} currency={currency} symbol={currencySymbol} rate={rate} categories={categories}/> : view === "content" ? <ContentPlanGenerator products={catalogue} tripCountry={activeTrip?.country} sellingPrice={(product, variant) => productPricing({ local_price: variant?.local_price ?? product.local_price, price_thb: variant?.local_price ?? product.price_thb, weight_grams: variant?.weight_grams ?? product.weight_grams, category: product.category, margin_percent: product.margin_percent }).sell}/> : view === "orders" ? <OrdersPanel key={activeTripCode} tripCode={activeTripCode} onChange={() => setCommerceRevision(n => n + 1)}/> : view === "trip" ? (
           <section className="trip-workspace">
             <div className="trip-switcher">
               <label>
