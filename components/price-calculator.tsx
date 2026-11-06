@@ -42,7 +42,9 @@ const num = (v: string) => (v === "" ? 0 : Math.max(0, Number(v) || 0));
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 // Calculator inputs and manual orders live in localStorage so they survive the
-// PWA being killed in the background (sessionStorage does not).
+// PWA being killed in the background (sessionStorage does not). Writes happen in
+// the setter, not an effect. A plain value is written immediately, so it lands even
+// when the calculator unmounts in the same render (saving switches to the Orders tab).
 function useStored<T>(key: string, read: (saved: unknown) => T, initial: T) {
   const [value, setValue] = useState<T>(() => {
     try {
@@ -52,14 +54,26 @@ function useStored<T>(key: string, read: (saved: unknown) => T, initial: T) {
       return initial;
     }
   });
-  useEffect(() => {
+  const write = (next: T) => {
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      localStorage.setItem(key, JSON.stringify(next));
     } catch {
       /* storage unavailable */
     }
-  }, [key, value]);
-  return [value, setValue] as const;
+  };
+  const setStored = (update: T | ((prev: T) => T)) => {
+    if (typeof update !== "function") {
+      write(update);
+      setValue(update);
+      return;
+    }
+    setValue((prev) => {
+      const next = (update as (prev: T) => T)(prev);
+      write(next);
+      return next;
+    });
+  };
+  return [value, setStored] as const;
 }
 
 const orderTotals = (lines: OrderLine[]) =>
@@ -186,8 +200,10 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
       setPlaceError(error?.message || "Order belum tersimpan. Coba lagi.");
       return;
     }
-    if (order.id) setSavedOrders((list) => list.filter((o) => o.id !== order.id));
+    if (order.id) setSavedOrders(savedOrders.filter((o) => o.id !== order.id));
+    // Ready for the next customer: clear the order and item inputs, keep category and shipping mode.
     setStoredOrder(newOrder());
+    setForm({ ...initialForm, category, mode });
     onOrderPlaced(data.order_id);
   };
   const clearOrder = () => {
