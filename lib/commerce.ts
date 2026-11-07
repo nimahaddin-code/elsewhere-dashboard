@@ -104,16 +104,28 @@ export function orderProfit(order: Pick<Order, 'order_items'>) {
   }
   return { profit: Math.round(profit), complete };
 }
-// Per-item breakdown for the Orders tab: modal and profit per unit and in total.
-// Null when the cost is unknown.
+// Per-item breakdown for the Orders tab: item price, shipping (with Rp/gram x
+// grams), modal and profit. Null when the cost is unknown; price/shipping parts
+// are null when the snapshot cannot split the modal.
 export function itemProfitDetail(item: Order['order_items'][number]) {
   const unitCapital = itemUnitCapital(item);
   if (unitCapital === null) return null;
   const s = item.pricing_snapshot ?? {};
+  const n = (v: unknown) => (v === null || v === undefined || v === '' ? NaN : Number(v));
   const unitPrice = Number(item.unit_price_idr);
   const unitProfit = unitPrice - unitCapital;
+  // Catalogue snapshots store exchange_rate_idr, manual (calculator) ones store rate.
+  const local = n(s.local_price);
+  const rate = Number.isFinite(n(s.exchange_rate_idr)) ? n(s.exchange_rate_idr) : n(s.rate);
+  const grams = Number.isFinite(n(s.weight_grams)) ? n(s.weight_grams) : n(s.grams);
+  const productCost = Number.isFinite(local) && Number.isFinite(rate) ? local * rate : null;
+  const cargo = productCost === null ? null : Math.max(0, unitCapital - productCost);
   return {
     isShipping: s.type === 'domestic_shipping',
+    productCost: productCost === null ? null : Math.round(productCost),
+    cargo: cargo === null ? null : Math.round(cargo),
+    grams: Number.isFinite(grams) && grams > 0 ? grams : null,
+    cargoPerGram: cargo !== null && Number.isFinite(grams) && grams > 0 ? Math.round(cargo / grams) : null,
     unitCapital: Math.round(unitCapital),
     unitProfit: Math.round(unitProfit),
     totalProfit: Math.round(unitProfit * Number(item.quantity ?? 1)),

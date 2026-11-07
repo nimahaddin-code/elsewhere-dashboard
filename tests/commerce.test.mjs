@@ -763,7 +763,10 @@ test('orderProfit uses saved cost snapshots for catalogue, manual and shipping i
 test('itemProfitDetail reports modal and profit per item', () => {
   const item = { product_name: 'Bag', variant_name: 'M', quantity: 2, unit_price_idr: 557000,
     pricing_snapshot: { local_price: 100, exchange_rate_idr: 4000, weight_grams: 500, category: 'Pakaian', margin_percent: 25, fashion_cargo_per_kg: 90000, nonfashion_cargo_per_kg: 80000 } };
-  assert.deepEqual(itemProfitDetail(item), { isShipping: false, unitCapital: 445000, unitProfit: 112000, totalProfit: 224000, profitPercent: 25 });
+  assert.deepEqual(itemProfitDetail(item), { isShipping: false, productCost: 400000, cargo: 45000, grams: 500, cargoPerGram: 90, unitCapital: 445000, unitProfit: 112000, totalProfit: 224000, profitPercent: 25 });
   assert.equal(itemProfitDetail({ ...item, pricing_snapshot: { unit_capital: 40000 }, unit_price_idr: 50000, quantity: 1 }).unitProfit, 10000);
   assert.equal(itemProfitDetail({ ...item, pricing_snapshot: {} }), null);
+  const manual = itemProfitDetail({ product_name: 'Snack', variant_name: 'Manual', quantity: 1, unit_price_idr: 80000,
+    pricing_snapshot: { source: 'manual', local_price: 14.9, rate: 4400, grams: 50, unit_capital: 69260 } });
+  assert.deepEqual([manual.productCost, manual.cargo, manual.grams, manual.cargoPerGram], [65560, 3700, 50, 74]);
 });
