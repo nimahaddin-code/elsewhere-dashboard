@@ -703,6 +703,18 @@ await test('manual orders accept a blank WhatsApp number after the optional-phon
   assert.equal((await db.query('select phone from orders where id=$1', [result.order_id])).rows[0].phone, '');
   await assert.rejects(db.query("update orders set phone='12' where id=$1", [result.order_id]), /orders_phone_check/);
 });
+await test('manual orders accept a short location after the short-address migration', async () => {
+  await owner();
+  await db.exec(await readFile(new URL('../supabase/migrations/202611070001_manual_order_short_address.sql', import.meta.url), 'utf8'));
+  const call = 'select commerce_place_manual_order($1,$2,$3,$4,$5,$6,$7) as data';
+  const items = JSON.stringify([{ name: 'Coklat', quantity: 1, unit_price: 45000 }]);
+  await role('authenticated', member, 'team@example.com');
+  const result = (await db.query(call, [crypto.randomUUID(), 'TRIP-001', items, 'Kak Rina', '', 'Ubud', ''])).rows[0].data;
+  await assert.rejects(db.query(call, [crypto.randomUUID(), 'TRIP-001', items, 'K', '', 'Ubud', '']), /nama customer/);
+  await owner();
+  assert.equal((await db.query('select address from orders where id=$1', [result.order_id])).rows[0].address, 'Ubud');
+  await assert.rejects(db.query("update orders set address='' where id=$1", [result.order_id]), /orders_address_check/);
+});
 await test('editors can jump order status directly, step back, and still need payment to ship', async () => {
   await owner();
   await db.exec(await readFile(new URL('../supabase/migrations/202611060003_order_status_direct.sql', import.meta.url), 'utf8'));

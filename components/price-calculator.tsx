@@ -325,8 +325,8 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
             <input type="tel" inputMode="tel" autoComplete="off" placeholder="Opsional" value={order.phone} onChange={(e) => setOrder((o) => ({ ...o, phone: e.target.value }))} />
           </label>
           <label className="pc-customer pc-wide">
-            Alamat (boleh menyusul)
-            <input type="text" autoComplete="off" placeholder="Opsional" value={order.address} onChange={(e) => setOrder((o) => ({ ...o, address: e.target.value }))} />
+            Lokasi / alamat (opsional)
+            <input type="text" autoComplete="off" placeholder="Ubud, Denpasar, atau alamat lengkap" value={order.address} onChange={(e) => setOrder((o) => ({ ...o, address: e.target.value }))} />
           </label>
         </div>
         {order.lines.length === 0 ? (
