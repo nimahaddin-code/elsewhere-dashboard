@@ -1,3 +1,4 @@
+import { isFashion } from './pricing.ts';
 export type CatalogueVariant = {
   photo_url?: string | null;
   option1_value?: string | null;
@@ -50,6 +51,7 @@ export type Order = {
     variant_name: string;
     quantity: number;
     unit_price_idr: number;
+    pricing_snapshot?: Record<string, unknown> | null;
   }[];
   order_payments: Payment[];
 };
@@ -73,6 +75,35 @@ export const orderLifecycleStages = [
   { id: 'completed', label: 'Completed', phase: 'delivery', description: 'Pesanan selesai dan sudah diterima customer' },
 ] as const;
 
+// Cost (modal) of one unit from the snapshot saved with the order, or null when
+// the snapshot lacks the inputs. Domestic shipping is passed through at cost.
+export function itemUnitCapital(item: Order['order_items'][number]) {
+  const s = item.pricing_snapshot ?? {};
+  const n = (v: unknown) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+  if (s.type === 'domestic_shipping') return Number(item.unit_price_idr);
+  if (Number.isFinite(n(s.unit_capital))) return n(s.unit_capital);
+  const local = n(s.local_price);
+  const rate = n(s.exchange_rate_idr);
+  if (!Number.isFinite(local) || !Number.isFinite(rate)) return null;
+  const cargoPerKg = isFashion(String(s.category ?? '')) ? n(s.fashion_cargo_per_kg) : n(s.nonfashion_cargo_per_kg);
+  const grams = n(s.weight_grams);
+  return local * rate + (Number.isFinite(grams) && Number.isFinite(cargoPerKg) ? (grams / 1000) * cargoPerKg : 0);
+}
+// Profit (selling price minus modal) for an order. `complete` is false when some
+// item had no usable cost snapshot; those items are left out of the profit.
+export function orderProfit(order: Pick<Order, 'order_items'>) {
+  let profit = 0;
+  let complete = true;
+  for (const item of order.order_items ?? []) {
+    const capital = itemUnitCapital(item);
+    if (capital === null) {
+      complete = false;
+      continue;
+    }
+    profit += (Number(item.unit_price_idr) - capital) * Number(item.quantity ?? 1);
+  }
+  return { profit: Math.round(profit), complete };
+}
 export const paidAmount = (order: Order) =>
   order.order_payments
     .filter((p) => p.verified_at)

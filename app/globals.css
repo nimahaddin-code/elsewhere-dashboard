@@ -301,7 +301,7 @@ main {
 }
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 13px;
   margin: 15px 0;
 }
@@ -710,6 +710,9 @@ main {
 @media (max-width: 1050px) {
   .metrics {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .metrics > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
   .grid-two,
   .grid-lower {
@@ -1737,6 +1740,8 @@ main {
 .order-status-transition-block label { display:grid;gap:5px;font-size:12px;font-weight:600;color:#695d66; }
 .order-status-transition-block input,.payment-record-form input { height:42px;border:1px solid #e1ccd6;border-radius:10px;padding:0 12px;font-size:16px;background:#fff;color:#2d2126;min-width:0; }
 .order-status-confirm-actions { display:flex;flex-wrap:wrap;gap:8px; }
+.order-profit { color:#2f7a4d;font-weight:600; }
+.order-profit-row span,.order-profit-row b { color:#2f7a4d; }
 .order-status-confirm-actions button { flex:1;min-height:44px;font-size:14px;font-weight:600; }
 .order-status-section > .commerce-primary { width:100%;margin-bottom:8px; }
 .payment-record-form { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;padding:12px;border:1px solid #ead5dd;border-radius:10px;background:#fffafc; }
@@ -2179,6 +2184,7 @@ button{font-family:inherit;touch-action:manipulation}
 
   /* Cards */
   .metrics{grid-template-columns:1fr 1fr;gap:10px}
+  .metrics>:last-child:nth-child(odd){grid-column:1/-1}
   .metric,.panel,.goal-panel,.finance-panel{border:0;border-radius:14px;box-shadow:none}
   .metric strong{font:700 22px/1.2 -apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;letter-spacing:.35px}
   .metric div,.metric span{font-size:13px}
