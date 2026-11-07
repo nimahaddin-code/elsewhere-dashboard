@@ -1758,6 +1758,13 @@ main {
 .orders-summary dd { margin:2px 0 0;font-size:16px;font-weight:700;color:#2d2126; }
 .orders-summary .profit dd { color:#2f7a4d; }
 .order-payment-match { color:#624153;background:#f7f1f3;border-radius:6px;padding:2px 6px;justify-self:start; }
+.order-payment-match.hit { background:#624153;color:#fff; }
+.order-payment-tags { display:flex;flex-wrap:wrap;gap:4px; }
+.payment-tags { border:0;margin:0;min-width:0;display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none; }
+.payment-tags::-webkit-scrollbar { display:none; }
+.payment-tags button { flex:none;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid #d9c3ce;border-radius:999px;background:#fff;color:#624153;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer; }
+.payment-tags button small { opacity:.6;margin-left:2px; }
+.payment-tags button.active { background:#624153;border-color:#624153;color:#fff; }
 @media (max-width:760px) { .orders-summary { grid-template-columns:1fr 1fr; } }
 .order-item-profit summary { cursor:pointer;list-style:none; }
 .order-item-profit summary::-webkit-details-marker { display:none; }
