@@ -45,15 +45,15 @@ export function calculatePrice(input: {
     sell: sell.toNumber(),
   };
 }
-// Calculator shipping options. Both carriers quote per 10 kg.
+// Calculator shipping options: `amount` is quoted per `perKg` kilograms.
 export type ShippingMode = 'handcarry' | 'paket';
-export const SHIPPING_PER_10KG = {
-  handcarry: { label: 'Hand carry', amount: 165, inLocalCurrency: true },
-  paket: { label: 'Paket', amount: 90000, inLocalCurrency: false },
+export const SHIPPING_RATES = {
+  handcarry: { label: 'Hand carry', amount: 165, perKg: 10, inLocalCurrency: true },
+  paket: { label: 'Paket', amount: 90000, perKg: 1, inLocalCurrency: false },
 } as const;
 export const shippingPerKg = (mode: ShippingMode, rate: number) => {
-  const s = SHIPPING_PER_10KG[mode];
-  return (s.inLocalCurrency ? s.amount * rate : s.amount) / 10;
+  const s = SHIPPING_RATES[mode];
+  return (s.inLocalCurrency ? s.amount * rate : s.amount) / s.perKg;
 };
 // Accepts "14.90", "14,90" and "1.234,50"/"1,234.50": the last separator is the decimal point.
 export function parseDecimal(raw: string) {
