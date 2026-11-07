@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { calculatePrice, parseDecimal } from '../lib/pricing.ts';
+import { calculatePrice, parseDecimal, shippingPerKg } from '../lib/pricing.ts';
 import {
   createOrderDraftSnapshot,
   getOrderLifecycle,
@@ -741,4 +741,9 @@ test('parseDecimal accepts comma or dot decimals for local prices', () => {
   for (const [raw, expected] of [['14.90', 14.9], ['14,90', 14.9], ['1.234,50', 1234.5], ['1,234.50', 1234.5], ['200', 200], ['14,', 14], ['', 0], ['abc', 0]]) {
     assert.equal(parseDecimal(raw), expected, raw);
   }
+});
+
+test('calculator shipping: paket is Rp90,000 per kg, hand carry RM165 per 10 kg', () => {
+  assert.equal(shippingPerKg('paket', 4500), 90000);
+  assert.equal(shippingPerKg('handcarry', 4500), 74250);
 });

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { parseDecimal } from "../lib/pricing";
 import {
-  SHIPPING_PER_10KG,
+  SHIPPING_RATES,
   calculatePrice,
   defaultMargin,
   rupiah,
@@ -243,12 +243,12 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
       </div>
 
       <fieldset className="pc-mode" aria-label="Pengiriman">
-        {(Object.keys(SHIPPING_PER_10KG) as ShippingMode[]).map((m) => {
-          const s = SHIPPING_PER_10KG[m];
+        {(Object.keys(SHIPPING_RATES) as ShippingMode[]).map((m) => {
+          const s = SHIPPING_RATES[m];
           return (
             <button key={m} type="button" aria-pressed={mode === m} className={mode === m ? "active" : ""} onClick={() => set({ mode: m })}>
               <b>{s.label}</b>
-              <small>{s.inLocalCurrency ? `${symbol}${s.amount}` : rupiah(s.amount)}/10kg</small>
+              <small>{s.inLocalCurrency ? `${symbol}${s.amount}` : rupiah(s.amount)}/{s.perKg === 1 ? "kg" : `${s.perKg}kg`}</small>
             </button>
           );
         })}
@@ -301,7 +301,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
 
       <dl className="pc-lines">
         <div><dt>Harga barang</dt><dd>{rupiah(unit.productCost)}</dd></div>
-        <div><dt>Ongkir {SHIPPING_PER_10KG[mode].label.toLowerCase()} {num(grams)}g</dt><dd>{rupiah(unit.cargo)}</dd></div>
+        <div><dt>Ongkir {SHIPPING_RATES[mode].label.toLowerCase()} {num(grams)}g</dt><dd>{rupiah(unit.cargo)}</dd></div>
         <div className="pc-sub"><dt>Modal</dt><dd>{rupiah(unit.capital)}</dd></div>
         <div><dt>Untung {marginPct}%</dt><dd>{rupiah(marginAmount)}</dd></div>
         <div><dt>Fee tambahan</dt><dd>{rupiah(num(flatFee))}</dd></div>
@@ -339,7 +339,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
                   <input aria-label="Nama barang" value={l.name} onChange={(e) => updateLine(l.id, { name: e.target.value })} />
                   <button type="button" aria-label={`Hapus ${l.name}`} onClick={() => removeLine(l.id)}>×</button>
                 </div>
-                <small>{l.category} · {l.grams}g · {SHIPPING_PER_10KG[l.mode].label} · modal {rupiah(l.unitCapital)}</small>
+                <small>{l.category} · {l.grams}g · {SHIPPING_RATES[l.mode].label} · modal {rupiah(l.unitCapital)}</small>
                 <div className="pc-line-edit">
                   <div className="pc-qty">
                     <button type="button" aria-label="Kurangi" onClick={() => updateLine(l.id, { qty: Math.max(1, l.qty - 1) })}>−</button>
