@@ -6,6 +6,7 @@ import {
   getOrderLifecycle,
   normalizePhone,
   orderStatuses,
+  itemProfitDetail,
   orderProfit,
   orderWhatsAppTemplates,
   paidAmount,
@@ -317,14 +318,31 @@ function OrderDetail({
           </div>
           <div className="order-detail-subsection">
             <h4>Barang</h4>
-            {order.order_items.map((i, index) => (
-              <div className="commerce-total" key={index}>
-                <span>
-                  {i.product_name} · {i.variant_name} × {i.quantity}
-                </span>
-                <b>{rupiah(Number(i.unit_price_idr) * i.quantity)}</b>
-              </div>
-            ))}
+            {order.order_items.map((i, index) => {
+              const detail = itemProfitDetail(i);
+              const row = (
+                <>
+                  <span>
+                    {i.product_name} · {i.variant_name} × {i.quantity}
+                  </span>
+                  <b>{rupiah(Number(i.unit_price_idr) * i.quantity)}</b>
+                </>
+              );
+              if (!detail || detail.isShipping) {
+                return <div className="commerce-total" key={index}>{row}</div>;
+              }
+              // Folded by default; open to see modal and profit for this product.
+              return (
+                <details className="order-item-profit" key={index}>
+                  <summary className="commerce-total">{row}</summary>
+                  <dl>
+                    <div><dt>Modal / pcs</dt><dd>{rupiah(detail.unitCapital)}</dd></div>
+                    <div><dt>Untung / pcs</dt><dd>{rupiah(detail.unitProfit)}{detail.profitPercent === null ? '' : ` (${detail.profitPercent}%)`}</dd></div>
+                    {i.quantity > 1 && <div><dt>Total untung</dt><dd>{rupiah(detail.totalProfit)}</dd></div>}
+                  </dl>
+                </details>
+              );
+            })}
             <div className="commerce-total">
               <span>Total barang</span>
               <b>{rupiah(Number(order.total_idr))}</b>

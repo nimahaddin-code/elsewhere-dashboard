@@ -104,6 +104,22 @@ export function orderProfit(order: Pick<Order, 'order_items'>) {
   }
   return { profit: Math.round(profit), complete };
 }
+// Per-item breakdown for the Orders tab: modal and profit per unit and in total.
+// Null when the cost is unknown.
+export function itemProfitDetail(item: Order['order_items'][number]) {
+  const unitCapital = itemUnitCapital(item);
+  if (unitCapital === null) return null;
+  const s = item.pricing_snapshot ?? {};
+  const unitPrice = Number(item.unit_price_idr);
+  const unitProfit = unitPrice - unitCapital;
+  return {
+    isShipping: s.type === 'domestic_shipping',
+    unitCapital: Math.round(unitCapital),
+    unitProfit: Math.round(unitProfit),
+    totalProfit: Math.round(unitProfit * Number(item.quantity ?? 1)),
+    profitPercent: unitCapital > 0 ? Math.round((unitProfit / unitCapital) * 100) : null,
+  };
+}
 export const paidAmount = (order: Order) =>
   order.order_payments
     .filter((p) => p.verified_at)
