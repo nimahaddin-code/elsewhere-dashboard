@@ -331,7 +331,7 @@ function OrderDetail({
               if (!detail || detail.isShipping) {
                 return <div className="commerce-total" key={index}>{row}</div>;
               }
-              // Folded by default; open to see modal and profit for this product.
+              // Folded by default; open to see item price, shipping and profit.
               return (
                 <details className="order-item-profit" key={index}>
                   <summary className="commerce-total">{row}</summary>
@@ -343,7 +343,6 @@ function OrderDetail({
                         <dd>{rupiah(detail.cargo)}</dd>
                       </div>
                     )}
-                    <div><dt>Modal / pcs</dt><dd>{rupiah(detail.unitCapital)}</dd></div>
                     <div><dt>Untung / pcs</dt><dd>{rupiah(detail.unitProfit)}{detail.profitPercent === null ? '' : ` (${detail.profitPercent}%)`}</dd></div>
                     {i.quantity > 1 && <div><dt>Total untung</dt><dd>{rupiah(detail.totalProfit)}</dd></div>}
                   </dl>
