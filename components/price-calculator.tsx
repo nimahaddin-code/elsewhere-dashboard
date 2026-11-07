@@ -32,7 +32,6 @@ type OrderLine = {
   qty: number;
   unitCapital: number;
   unitSell: number;
-  marginPct?: number;
 };
 // `id` is set when a legacy device-only draft is reopened; `requestId` makes a
 // retried save idempotent and is renewed whenever the draft changes.
@@ -164,7 +163,6 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
       qty: Math.min(MAX_QTY, quantity),
       unitCapital: unit.capital,
       unitSell: unit.sell,
-      marginPct,
     };
     setOrder((o) => ({ ...o, lines: [...o.lines, line] }));
     set({ name: "", price: "", grams: "", qty: "1" });
@@ -196,7 +194,7 @@ export function PriceCalculator({ country, currency, symbol, rate, categories, t
           name: l.name.trim(),
           quantity: l.qty,
           unit_price: l.unitSell,
-          snapshot: { category: l.category, shipping_mode: l.mode, local_price: l.localPrice, grams: l.grams, unit_capital: l.unitCapital, margin_percent: l.marginPct, rate },
+          snapshot: { category: l.category, shipping_mode: l.mode, local_price: l.localPrice, grams: l.grams, unit_capital: l.unitCapital, rate },
         })),
         ...(extraShipping > 0 ? [{ name: "Ongkir luar Bali", quantity: 1, unit_price: extraShipping, snapshot: { type: "domestic_shipping" } }] : []),
       ],

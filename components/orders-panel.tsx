@@ -331,16 +331,14 @@ function OrderDetail({
               if (!detail || detail.isShipping) {
                 return <div className="commerce-total" key={index}>{row}</div>;
               }
-              // Folded by default; open to see the margin set and profit taken.
+              // Folded by default; open to see modal and profit for this product.
               return (
                 <details className="order-item-profit" key={index}>
                   <summary className="commerce-total">{row}</summary>
                   <dl>
                     <div><dt>Modal / pcs</dt><dd>{rupiah(detail.unitCapital)}</dd></div>
-                    <div><dt>Harga jual / pcs</dt><dd>{rupiah(Number(i.unit_price_idr))}</dd></div>
-                    <div><dt>Untung diset</dt><dd>{detail.marginPercent === null ? '—' : `${detail.marginPercent}%`}</dd></div>
-                    <div><dt>Untung / pcs</dt><dd>{rupiah(detail.unitProfit)}{detail.effectivePercent === null ? '' : ` (${detail.effectivePercent.toLocaleString('id-ID')}%)`}</dd></div>
-                    {i.quantity > 1 && <div><dt>Untung × {i.quantity}</dt><dd>{rupiah(detail.totalProfit)}</dd></div>}
+                    <div><dt>Untung / pcs</dt><dd>{rupiah(detail.unitProfit)}{detail.profitPercent === null ? '' : ` (${detail.profitPercent}%)`}</dd></div>
+                    {i.quantity > 1 && <div><dt>Total untung</dt><dd>{rupiah(detail.totalProfit)}</dd></div>}
                   </dl>
                 </details>
               );

@@ -104,22 +104,20 @@ export function orderProfit(order: Pick<Order, 'order_items'>) {
   }
   return { profit: Math.round(profit), complete };
 }
-// Per-item breakdown for the Orders tab: the margin % that was set (when saved)
-// and the profit actually taken per unit and in total. Null when cost is unknown.
+// Per-item breakdown for the Orders tab: modal and profit per unit and in total.
+// Null when the cost is unknown.
 export function itemProfitDetail(item: Order['order_items'][number]) {
   const unitCapital = itemUnitCapital(item);
   if (unitCapital === null) return null;
   const s = item.pricing_snapshot ?? {};
-  const set = s.margin_percent === null || s.margin_percent === undefined || s.margin_percent === '' ? NaN : Number(s.margin_percent);
   const unitPrice = Number(item.unit_price_idr);
   const unitProfit = unitPrice - unitCapital;
   return {
     isShipping: s.type === 'domestic_shipping',
     unitCapital: Math.round(unitCapital),
-    marginPercent: Number.isFinite(set) ? set : null,
     unitProfit: Math.round(unitProfit),
     totalProfit: Math.round(unitProfit * Number(item.quantity ?? 1)),
-    effectivePercent: unitCapital > 0 ? Math.round((unitProfit / unitCapital) * 1000) / 10 : null,
+    profitPercent: unitCapital > 0 ? Math.round((unitProfit / unitCapital) * 100) : null,
   };
 }
 export const paidAmount = (order: Order) =>
