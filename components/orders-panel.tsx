@@ -336,6 +336,13 @@ function OrderDetail({
                 <details className="order-item-profit" key={index}>
                   <summary className="commerce-total">{row}</summary>
                   <dl>
+                    {detail.productCost !== null && <div><dt>Harga barang</dt><dd>{rupiah(detail.productCost)}</dd></div>}
+                    {detail.cargo !== null && (
+                      <div>
+                        <dt>Ongkir{detail.cargoPerGram !== null && detail.grams !== null ? ` (Rp${detail.cargoPerGram.toLocaleString('id-ID')} × ${detail.grams.toLocaleString('id-ID')}g)` : ''}</dt>
+                        <dd>{rupiah(detail.cargo)}</dd>
+                      </div>
+                    )}
                     <div><dt>Modal / pcs</dt><dd>{rupiah(detail.unitCapital)}</dd></div>
                     <div><dt>Untung / pcs</dt><dd>{rupiah(detail.unitProfit)}{detail.profitPercent === null ? '' : ` (${detail.profitPercent}%)`}</dd></div>
                     {i.quantity > 1 && <div><dt>Total untung</dt><dd>{rupiah(detail.totalProfit)}</dd></div>}
