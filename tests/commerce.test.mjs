@@ -8,6 +8,7 @@ import {
   getOrderLifecycle,
   orderLifecycleStages,
   orderWhatsAppTemplates,
+  orderProfit,
 } from '../lib/commerce.ts';
 const db = new PGlite();
 const member = '10000000-0000-4000-8000-000000000001',
@@ -746,4 +747,14 @@ test('parseDecimal accepts comma or dot decimals for local prices', () => {
 test('calculator shipping: paket is Rp90,000 per kg, hand carry RM165 per 10 kg', () => {
   assert.equal(shippingPerKg('paket', 4500), 90000);
   assert.equal(shippingPerKg('handcarry', 4500), 74250);
+});
+
+test('orderProfit uses saved cost snapshots for catalogue, manual and shipping items', () => {
+  const catalogue = { product_name: 'Bag', variant_name: 'M', quantity: 2, unit_price_idr: 600000,
+    pricing_snapshot: { local_price: 100, exchange_rate_idr: 4000, weight_grams: 500, category: 'Pakaian', fashion_cargo_per_kg: 90000, nonfashion_cargo_per_kg: 80000 } };
+  const manual = { product_name: 'Coklat', variant_name: 'Manual', quantity: 1, unit_price_idr: 50000, pricing_snapshot: { source: 'manual', unit_capital: 41000 } };
+  const shipping = { product_name: 'Ongkir luar Bali', variant_name: 'Manual', quantity: 1, unit_price_idr: 25000, pricing_snapshot: { type: 'domestic_shipping' } };
+  // catalogue: modal 400000 + 45000 = 445000 -> (600000-445000)*2 = 310000; manual 9000; shipping 0
+  assert.deepEqual(orderProfit({ order_items: [catalogue, manual, shipping] }), { profit: 319000, complete: true });
+  assert.deepEqual(orderProfit({ order_items: [manual, { ...manual, pricing_snapshot: {} }] }), { profit: 9000, complete: false });
 });

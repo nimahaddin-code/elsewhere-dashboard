@@ -38,7 +38,7 @@ import ItineraryPanel from "../components/itinerary-panel";
 import { PriceCalculator } from "../components/price-calculator";
 import { DecimalInput } from "../components/decimal-input";
 import { calculatePrice, defaultMargin, isFashion, parseDecimal } from "../lib/pricing";
-import { type Order, paidAmount } from "../lib/commerce";
+import { type Order, orderProfit, paidAmount } from "../lib/commerce";
 import { supabaseConfigured } from "../lib/supabase";
 import { activateVariantCombination, cleanOptionValues, deactivateIncompleteMatrixRows, getOptionValues, getSelectedOptionValues, inferOptionRenames, normalizeVariantOptions, renameVariantOptions, variantDetailsForSync, variantNameMatchesOptions } from "../lib/variant-selection.js";
 type Expense = {
@@ -335,6 +335,9 @@ export function Dashboard() {
   const currentOrders = commerceOrders.filter(o => o.trip_code === activeTripCode);
   const collected = currentOrders.reduce((sum, o) => sum + paidAmount(o), 0);
   const grossOrderValue = currentOrders.filter(o => o.status !== "cancelled").reduce((sum,o) => sum + Number(o.total_idr),0);
+  const activeProfits = currentOrders.filter(o => o.status !== "cancelled").map(orderProfit);
+  const totalProfit = activeProfits.reduce((sum, p) => sum + p.profit, 0);
+  const profitComplete = activeProfits.every(p => p.complete);
   const [otherCargoRate, setOtherCargoRate] = useState(90000);
   const [orderTarget, setOrderTarget] = useState(50);
   const [itemBaht, setItemBaht] = useState(200);
@@ -2300,6 +2303,7 @@ export function Dashboard() {
               <Metric label="Order dengan pembayaran" value={commerceError ? "—" : String(confirmedOrders)} note="DP atau pelunasan terverifikasi"/>
               <Metric label="Nilai pesanan aktif" value={commerceError ? "—" : format(grossOrderValue)} note="Tidak termasuk pesanan dibatalkan"/>
               <Metric label="Dana terkumpul" value={commerceError ? "—" : format(collected)} note="Pembayaran terverifikasi"/>
+              <Metric label="Total untung" value={commerceError ? "—" : format(totalProfit)} note={profitComplete ? "Semua order aktif, harga jual dikurangi modal" : "Sebagian order tanpa data modal tidak dihitung"}/>
             </section>
             <section className="goal-panel">
               <div className="goal-main">

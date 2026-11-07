@@ -6,6 +6,7 @@ import {
   getOrderLifecycle,
   normalizePhone,
   orderStatuses,
+  orderProfit,
   orderWhatsAppTemplates,
   paidAmount,
   paymentLabel,
@@ -142,7 +143,10 @@ export default function OrdersPanel({
                       .map((i) => `${i.product_name} × ${i.quantity}`)
                       .join(', ')}
                   </span>
-                  <b>{rupiah(Number(order.total_idr))}</b>
+                  <b>
+                    {rupiah(Number(order.total_idr))}
+                    {order.status !== 'cancelled' && <small className="order-profit"> · untung {rupiah(orderProfit(order).profit)}</small>}
+                  </b>
                   <span>
                     {orderStatuses[effectiveOrderStatus(order)]} · {paymentLabel(order)}
                   </span>
@@ -234,6 +238,7 @@ function OrderDetail({
     if (error) throw error;
   };
   const paid = paidAmount(order);
+  const profit = orderProfit(order);
   const booked = order.order_payments.reduce((sum, payment) => sum + Number(payment.amount_idr), 0);
   const remaining = Math.max(0, Number(order.total_idr) - booked);
   const fullyPaid = paid >= Number(order.total_idr);
@@ -323,6 +328,10 @@ function OrderDetail({
             <div className="commerce-total">
               <span>Total barang</span>
               <b>{rupiah(Number(order.total_idr))}</b>
+            </div>
+            <div className="commerce-total order-profit-row">
+              <span>Untung{profit.complete ? '' : ' (sebagian, ada item tanpa data modal)'}</span>
+              <b>{rupiah(profit.profit)}</b>
             </div>
           </div>
         </section>
