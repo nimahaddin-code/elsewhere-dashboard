@@ -85,7 +85,7 @@ export function itemUnitCapital(item: Order['order_items'][number]) {
   const local = n(s.local_price);
   const rate = n(s.exchange_rate_idr);
   if (!Number.isFinite(local) || !Number.isFinite(rate)) return null;
-  const cargoPerKg = isFashion(String(s.category ?? '')) ? n(s.fashion_cargo_per_kg) : n(s.nonfashion_cargo_per_kg);
+  const cargoPerKg = isFashion(typeof s.category === 'string' ? s.category : '') ? n(s.fashion_cargo_per_kg) : n(s.nonfashion_cargo_per_kg);
   const grams = n(s.weight_grams);
   return local * rate + (Number.isFinite(grams) && Number.isFinite(cargoPerKg) ? (grams / 1000) * cargoPerKg : 0);
 }
