@@ -26,6 +26,7 @@ export default function OrdersPanel({
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [paymentQuery, setPaymentQuery] = useState('');
+  const [paymentTag, setPaymentTag] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -60,15 +61,26 @@ export default function OrdersPanel({
   }, [tripCode, revision]);
   const selected = orders.find((o) => o.id === selectedId);
   const paymentNeedle = paymentQuery.trim().toLowerCase();
-  const matchingPayments = (o: Order) =>
-    paymentNeedle ? o.order_payments.filter((p) => p.reference.toLowerCase().includes(paymentNeedle)) : [];
+  // Each distinct payment note (case/spacing-insensitive) becomes a tag.
+  const tagKey = (reference: string) => reference.trim().replace(/\s+/g, ' ').toLowerCase();
+  const paymentTags = [...orders.reduce((tags, o) => {
+    for (const key of new Set(o.order_payments.map((p) => tagKey(p.reference)).filter(Boolean))) {
+      const label = o.order_payments.find((p) => tagKey(p.reference) === key)!.reference.trim();
+      tags.set(key, { label: tags.get(key)?.label ?? label, count: (tags.get(key)?.count ?? 0) + 1 });
+    }
+    return tags;
+  }, new Map<string, { label: string; count: number }>())].sort((a, b) => b[1].count - a[1].count || a[1].label.localeCompare(b[1].label));
+  const paymentFilterOn = Boolean(paymentNeedle || paymentTag);
+  const matchesPayment = (p: Order['order_payments'][number]) =>
+    (!paymentTag || tagKey(p.reference) === paymentTag) && (!paymentNeedle || p.reference.toLowerCase().includes(paymentNeedle));
+  const matchingPayments = (o: Order) => (paymentFilterOn ? o.order_payments.filter(matchesPayment) : []);
   const shown = orders.filter(
     (o) =>
       (filter === 'all' || effectiveOrderStatus(o) === filter) &&
       `${o.order_code} ${o.customer_name} ${o.phone}`
         .toLowerCase()
         .includes(query.toLowerCase()) &&
-      (!paymentNeedle || matchingPayments(o).length > 0),
+      (!paymentFilterOn || matchingPayments(o).length > 0),
   );
   // Totals follow the current filters; cancelled orders count as 0 omzet/profit.
   const active = shown.filter((o) => o.status !== 'cancelled');
@@ -128,14 +140,26 @@ export default function OrdersPanel({
           ))}
         </select>
       </div>
+      {!loading && !error && paymentTags.length > 0 && (
+        <fieldset className="payment-tags" aria-label="Tag keterangan pembayaran">
+          <button type="button" className={paymentTag === null ? 'active' : ''} aria-pressed={paymentTag === null} onClick={() => setPaymentTag(null)}>
+            Semua
+          </button>
+          {paymentTags.map(([key, tag]) => (
+            <button key={key} type="button" className={paymentTag === key ? 'active' : ''} aria-pressed={paymentTag === key} title={tag.label} onClick={() => setPaymentTag(paymentTag === key ? null : key)}>
+              {tag.label} <small>{tag.count}</small>
+            </button>
+          ))}
+        </fieldset>
+      )}
       {!loading && !error && (
         <dl className="orders-summary">
           <div><dt>Omzet</dt><dd>{rupiah(summary.omzet)}</dd></div>
           <div className="profit"><dt>Profit</dt><dd>{rupiah(summary.profit)}</dd></div>
           <div><dt>Terbayar</dt><dd>{rupiah(summary.paid)}</dd></div>
           <div><dt>Order</dt><dd>{shown.length}</dd></div>
-          {paymentNeedle && (
-            <div className="wide"><dt>Transfer cocok “{paymentQuery.trim()}” (terverifikasi)</dt><dd>{rupiah(summary.matchedPayments)}</dd></div>
+          {paymentFilterOn && (
+            <div className="wide"><dt>Transfer {paymentTag ? `tag “${paymentTags.find(([key]) => key === paymentTag)?.[1].label ?? paymentTag}”` : `cocok “${paymentQuery.trim()}”`} (terverifikasi)</dt><dd>{rupiah(summary.matchedPayments)}</dd></div>
           )}
         </dl>
       )}
@@ -174,11 +198,15 @@ export default function OrdersPanel({
                       .map((i) => `${i.product_name} × ${i.quantity}`)
                       .join(', ')}
                   </span>
-                  {matchingPayments(order).map((p) => (
-                    <small className="order-payment-match" key={p.id}>
-                      💳 {p.reference} · {rupiah(Number(p.amount_idr))}{p.verified_at ? '' : ' (belum dikonfirmasi)'}
-                    </small>
-                  ))}
+                  {order.order_payments.length > 0 && (
+                    <span className="order-payment-tags">
+                      {order.order_payments.map((p) => (
+                        <small className={`order-payment-match ${paymentFilterOn && matchesPayment(p) ? 'hit' : ''}`} key={p.id}>
+                          💳 {p.reference} · {rupiah(Number(p.amount_idr))}{p.verified_at ? '' : ' (belum dikonfirmasi)'}
+                        </small>
+                      ))}
+                    </span>
+                  )}
                   <b>
                     {rupiah(Number(order.total_idr))}
                     {order.status !== 'cancelled' && <small className="order-profit"> · untung {rupiah(orderProfit(order).profit)}</small>}
