@@ -25,6 +25,7 @@ export default function OrdersPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [paymentQuery, setPaymentQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -58,13 +59,25 @@ export default function OrdersPanel({
     };
   }, [tripCode, revision]);
   const selected = orders.find((o) => o.id === selectedId);
+  const paymentNeedle = paymentQuery.trim().toLowerCase();
+  const matchingPayments = (o: Order) =>
+    paymentNeedle ? o.order_payments.filter((p) => p.reference.toLowerCase().includes(paymentNeedle)) : [];
   const shown = orders.filter(
     (o) =>
       (filter === 'all' || effectiveOrderStatus(o) === filter) &&
       `${o.order_code} ${o.customer_name} ${o.phone}`
         .toLowerCase()
-        .includes(query.toLowerCase()),
+        .includes(query.toLowerCase()) &&
+      (!paymentNeedle || matchingPayments(o).length > 0),
   );
+  // Totals follow the current filters; cancelled orders count as 0 omzet/profit.
+  const active = shown.filter((o) => o.status !== 'cancelled');
+  const summary = {
+    omzet: active.reduce((sum, o) => sum + Number(o.total_idr), 0),
+    profit: active.reduce((sum, o) => sum + orderProfit(o).profit, 0),
+    paid: active.reduce((sum, o) => sum + paidAmount(o), 0),
+    matchedPayments: shown.reduce((sum, o) => sum + matchingPayments(o).filter((p) => p.verified_at).reduce((t, p) => t + Number(p.amount_idr), 0), 0),
+  };
   useEffect(() => {
     if (typeof window !== 'undefined') {
       if (selectedId) {
@@ -96,6 +109,12 @@ export default function OrdersPanel({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <input
+          aria-label="Cari keterangan pembayaran"
+          placeholder="Cari keterangan transfer…"
+          value={paymentQuery}
+          onChange={(e) => setPaymentQuery(e.target.value)}
+        />
         <select
           aria-label="Filter status"
           value={filter}
@@ -109,6 +128,17 @@ export default function OrdersPanel({
           ))}
         </select>
       </div>
+      {!loading && !error && (
+        <dl className="orders-summary">
+          <div><dt>Omzet</dt><dd>{rupiah(summary.omzet)}</dd></div>
+          <div className="profit"><dt>Profit</dt><dd>{rupiah(summary.profit)}</dd></div>
+          <div><dt>Terbayar</dt><dd>{rupiah(summary.paid)}</dd></div>
+          <div><dt>Order</dt><dd>{shown.length}</dd></div>
+          {paymentNeedle && (
+            <div className="wide"><dt>Transfer cocok “{paymentQuery.trim()}” (terverifikasi)</dt><dd>{rupiah(summary.matchedPayments)}</dd></div>
+          )}
+        </dl>
+      )}
       {error && (
         <p role="alert" className="commerce-error">
           {error}
@@ -144,6 +174,11 @@ export default function OrdersPanel({
                       .map((i) => `${i.product_name} × ${i.quantity}`)
                       .join(', ')}
                   </span>
+                  {matchingPayments(order).map((p) => (
+                    <small className="order-payment-match" key={p.id}>
+                      💳 {p.reference} · {rupiah(Number(p.amount_idr))}{p.verified_at ? '' : ' (belum dikonfirmasi)'}
+                    </small>
+                  ))}
                   <b>
                     {rupiah(Number(order.total_idr))}
                     {order.status !== 'cancelled' && <small className="order-profit"> · untung {rupiah(orderProfit(order).profit)}</small>}

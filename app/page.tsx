@@ -336,6 +336,7 @@ export function Dashboard() {
   const collected = currentOrders.reduce((sum, o) => sum + paidAmount(o), 0);
   const grossOrderValue = currentOrders.filter(o => o.status !== "cancelled").reduce((sum,o) => sum + Number(o.total_idr),0);
   const activeProfits = currentOrders.filter(o => o.status !== "cancelled").map(orderProfit);
+  const activeOrderCount = activeProfits.length;
   const totalProfit = activeProfits.reduce((sum, p) => sum + p.profit, 0);
   const profitComplete = activeProfits.every(p => p.complete);
   const [otherCargoRate, setOtherCargoRate] = useState(90000);
@@ -2299,11 +2300,10 @@ export function Dashboard() {
         ) : (
           <>
             <section className="metrics">
-              <Metric label="Pesanan masuk" value={commerceError ? "—" : String(currentOrders.length)} note="Pesanan dari katalog"/>
-              <Metric label="Order dengan pembayaran" value={commerceError ? "—" : String(confirmedOrders)} note="DP atau pelunasan terverifikasi"/>
-              <Metric label="Nilai pesanan aktif" value={commerceError ? "—" : format(grossOrderValue)} note="Tidak termasuk pesanan dibatalkan"/>
-              <Metric label="Dana terkumpul" value={commerceError ? "—" : format(collected)} note="Pembayaran terverifikasi"/>
-              <Metric label="Total untung" value={commerceError ? "—" : format(totalProfit)} note={profitComplete ? "Semua order aktif, harga jual dikurangi modal" : "Sebagian order tanpa data modal tidak dihitung"}/>
+              <Metric tone="highlight" label="Omzet" value={commerceError ? "—" : format(grossOrderValue)} note={`${activeOrderCount} order aktif · tanpa yang dibatalkan`}/>
+              <Metric tone="highlight positive" label="Profit" value={commerceError ? "—" : format(totalProfit)} note={!profitComplete ? "Sebagian order tanpa data modal tidak dihitung" : grossOrderValue > 0 ? `${Math.round((totalProfit / grossOrderValue) * 100)}% dari omzet` : "Harga jual dikurangi modal"}/>
+              <Metric label="Dana terkumpul" value={commerceError ? "—" : format(collected)} note={`Sisa tagihan ${format(Math.max(0, grossOrderValue - collected))}`}/>
+              <Metric label="Pesanan" value={commerceError ? "—" : String(currentOrders.length)} note={`${confirmedOrders} sudah ada pembayaran`}/>
             </section>
             <section className="goal-panel">
               <div className="goal-main">
