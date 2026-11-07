@@ -3,7 +3,8 @@ import { ArrowDown, ArrowUp, CheckCircle2, ChevronDown, MapPin, Pencil, Plus, Ro
 import { supabase } from "../lib/supabase";
 
 type Shop = { id: string; name: string; items: string; done: boolean };
-type Stop = { id: string; day: number; position: number; place: string; note: string; shops: Shop[]; map_url: string; getting_there: string };
+type Idea = { id: string; text: string; done: boolean };
+type Stop = { id: string; day: number; position: number; place: string; note: string; shops: Shop[]; content: Idea[]; map_url: string; getting_there: string };
 type StopDraft = { day: string; time: string; place: string; note: string; url: string; leg: string };
 
 // Seeded notes start with the planned time, e.g. "19:40 · Pavilion ...".
@@ -64,18 +65,19 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
   const [filter, setFilter] = useState<number | "all" | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [stopSheet, setStopSheet] = useState<{ id: string | null; draft: StopDraft } | null>(null);
+  const [ideaSheet, setIdeaSheet] = useState<{ stopId: string; ideaId: string | null; text: string } | null>(null);
   const [shopSheet, setShopSheet] = useState<{ stopId: string; shopId: string | null; name: string; items: string } | null>(null);
 
   const load = async () => {
     const { data, error: err } = await supabase
       .from("trip_itinerary_stops")
-      .select("id,day,position,place,note,shops,map_url,getting_there")
+      .select("id,day,position,place,note,shops,content,map_url,getting_there")
       .eq("trip_code", tripCode)
       .order("day")
       .order("position")
       .order("created_at");
     if (err) setError("Gagal memuat itinerary");
-    else { setError(""); setStops((data || []) as Stop[]); }
+    else { setError(""); setStops(((data || []) as Stop[]).map((s) => ({ ...s, content: s.content || [] }))); }
     setLoading(false);
   };
 
@@ -138,6 +140,23 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
     setStops((all) => all.map((s) => (s.id === stop.id ? { ...s, shops } : s)));
     const { error: err } = await supabase.from("trip_itinerary_stops").update({ shops }).eq("id", stop.id);
     if (err) { setError("Gagal menyimpan"); await load(); }
+  };
+
+  const saveContent = async (stop: Stop, content: Idea[]) => {
+    setStops((all) => all.map((s) => (s.id === stop.id ? { ...s, content } : s)));
+    const { error: err } = await supabase.from("trip_itinerary_stops").update({ content }).eq("id", stop.id);
+    if (err) { setError("Gagal menyimpan"); await load(); }
+  };
+
+  const submitIdea = () => {
+    if (!ideaSheet) return;
+    const stop = stops.find((s) => s.id === ideaSheet.stopId);
+    const text = ideaSheet.text.trim();
+    if (!stop || !text) return;
+    void saveContent(stop, ideaSheet.ideaId
+      ? stop.content.map((x) => (x.id === ideaSheet.ideaId ? { ...x, text } : x))
+      : [...stop.content, { id: crypto.randomUUID(), text, done: false }]);
+    setIdeaSheet(null);
   };
 
   const submitShop = () => {
@@ -218,16 +237,18 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
                         <span className="itin-card-main">
                           <b>{stop.place}</b>
                           <small>
-                            {stop.shops.length > 0 ? <><Store size={13} aria-hidden="true" /> {shopDone}/{stop.shops.length} toko</> : "Belum ada toko"}
-                            {rest && !isOpen && <> · {rest}</>}
+                            {stop.shops.length > 0 ? <><Store size={13} aria-hidden="true" /> {shopDone}/{stop.shops.length} toko</> : "Belum ada toko"}{stop.content.length > 0 && <> · {stop.content.filter((x) => x.done).length}/{stop.content.length} konten</>}
+                            {rest && !isOpen && <span className="itin-preview"> · {rest}</span>}
                           </small>
                         </span>
                         <ChevronDown className="itin-chev" size={20} aria-hidden="true" />
                       </button>
 
-                      {isOpen && (
+                      {(
                         <div className="itin-detail">
                           {rest && <p className="itin-note">{rest}</p>}
+                          <div className="itin-col">
+                          <h4>Toko & barang</h4>
                           <ul className="itin-shoplist">
                             {stop.shops.map((shop) => (
                               <li key={shop.id} className={shop.done ? "done" : ""}>
@@ -241,6 +262,23 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
                             ))}
                             <li className="itin-addrow"><button onClick={() => setShopSheet({ stopId: stop.id, shopId: null, name: "", items: "" })}><Plus size={16} /> Tambah toko / barang</button></li>
                           </ul>
+                          </div>
+                          <div className="itin-col">
+                          <h4>Konten</h4>
+                          <ul className="itin-shoplist">
+                            {stop.content.map((idea) => (
+                              <li key={idea.id} className={idea.done ? "done" : ""}>
+                                <button className="itin-shop-main" aria-pressed={idea.done} onClick={() => void saveContent(stop, stop.content.map((x) => (x.id === idea.id ? { ...x, done: !x.done } : x)))}>
+                                  <span className="itin-check">{idea.done ? <CheckCircle2 /> : <i />}</span>
+                                  <span><b>{idea.text}</b></span>
+                                </button>
+                                <button className="ghost" aria-label={`Edit ${idea.text}`} onClick={() => setIdeaSheet({ stopId: stop.id, ideaId: idea.id, text: idea.text })}><Pencil size={16} /></button>
+                                <button className="ghost" aria-label={`Hapus ${idea.text}`} onClick={() => void saveContent(stop, stop.content.filter((x) => x.id !== idea.id))}><Trash2 size={16} /></button>
+                              </li>
+                            ))}
+                            <li className="itin-addrow"><button onClick={() => setIdeaSheet({ stopId: stop.id, ideaId: null, text: "" })}><Plus size={16} /> Tambah ide konten</button></li>
+                          </ul>
+                          </div>
                           <div className="itin-actions">
                             {mapUrl && <a className="itin-map" href={mapUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} aria-hidden="true" /> Maps</a>}
                             <button onClick={() => { const { time: t, rest: r } = splitNote(stop.note); setStopSheet({ id: stop.id, draft: { day: String(stop.day), time: t, place: stop.place, note: r, url: stop.map_url || "", leg: stop.getting_there || "" } }); }}><Pencil size={16} /> Edit</button>
@@ -269,6 +307,15 @@ export default function ItineraryPanel({ tripCode, tripName, departureDate }: { 
             <label className="wide">Link Google Maps<input type="url" inputMode="url" value={stopSheet.draft.url} maxLength={500} placeholder="https://maps.google.com/…" onChange={(e) => setDraft({ url: e.target.value })} /></label>
             <label className="wide">Cara ke sini<input value={stopSheet.draft.leg} maxLength={300} placeholder="mis. Dari hotel: jalan kaki 5 menit" onChange={(e) => setDraft({ leg: e.target.value })} /></label>
             <button type="submit" className="primary" disabled={!stopSheet.draft.place.trim()}>Simpan</button>
+          </form>
+        </Sheet>
+      )}
+
+      {ideaSheet && (
+        <Sheet title={ideaSheet.ideaId ? "Edit ide konten" : "Ide konten baru"} onClose={() => setIdeaSheet(null)}>
+          <form className="isheet-form" onSubmit={(e) => { e.preventDefault(); submitIdea(); }}>
+            <label className="wide">Ide / shot list<input autoFocus value={ideaSheet.text} maxLength={300} placeholder="mis. Reels haul Padini, foto OOTD di Pavilion" onChange={(e) => setIdeaSheet((s) => s && { ...s, text: e.target.value })} /></label>
+            <button type="submit" className="primary" disabled={!ideaSheet.text.trim()}>Simpan</button>
           </form>
         </Sheet>
       )}
