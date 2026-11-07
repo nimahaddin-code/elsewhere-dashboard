@@ -1741,6 +1741,14 @@ main {
 .order-status-transition-block input,.payment-record-form input { height:42px;border:1px solid #e1ccd6;border-radius:10px;padding:0 12px;font-size:16px;background:#fff;color:#2d2126;min-width:0; }
 .order-status-confirm-actions { display:flex;flex-wrap:wrap;gap:8px; }
 .order-profit { color:#2f7a4d;font-weight:600; }
+.order-item-profit summary { cursor:pointer;list-style:none; }
+.order-item-profit summary::-webkit-details-marker { display:none; }
+.order-item-profit summary span::before { content:'▸';display:inline-block;width:14px;color:#a28791;transition:transform .15s; }
+.order-item-profit[open] summary span::before { transform:rotate(90deg); }
+.order-item-profit dl { display:grid;gap:6px;margin:0 0 10px 14px;padding:10px 12px;border-radius:10px;background:#f6fbf7; }
+.order-item-profit dl div { display:flex;justify-content:space-between;gap:12px;font-size:13px; }
+.order-item-profit dt { color:#695d66; }
+.order-item-profit dd { margin:0;font-weight:600;color:#2f7a4d; }
 .order-profit-row span,.order-profit-row b { color:#2f7a4d; }
 .order-status-confirm-actions button { flex:1;min-height:44px;font-size:14px;font-weight:600; }
 .order-status-section > .commerce-primary { width:100%;margin-bottom:8px; }

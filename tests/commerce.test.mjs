@@ -9,6 +9,7 @@ import {
   orderLifecycleStages,
   orderWhatsAppTemplates,
   orderProfit,
+  itemProfitDetail,
 } from '../lib/commerce.ts';
 const db = new PGlite();
 const member = '10000000-0000-4000-8000-000000000001',
@@ -757,4 +758,12 @@ test('orderProfit uses saved cost snapshots for catalogue, manual and shipping i
   // catalogue: modal 400000 + 45000 = 445000 -> (600000-445000)*2 = 310000; manual 9000; shipping 0
   assert.deepEqual(orderProfit({ order_items: [catalogue, manual, shipping] }), { profit: 319000, complete: true });
   assert.deepEqual(orderProfit({ order_items: [manual, { ...manual, pricing_snapshot: {} }] }), { profit: 9000, complete: false });
+});
+
+test('itemProfitDetail reports the margin set and profit taken per item', () => {
+  const item = { product_name: 'Bag', variant_name: 'M', quantity: 2, unit_price_idr: 557000,
+    pricing_snapshot: { local_price: 100, exchange_rate_idr: 4000, weight_grams: 500, category: 'Pakaian', margin_percent: 25, fashion_cargo_per_kg: 90000, nonfashion_cargo_per_kg: 80000 } };
+  assert.deepEqual(itemProfitDetail(item), { isShipping: false, unitCapital: 445000, marginPercent: 25, unitProfit: 112000, totalProfit: 224000, effectivePercent: 25.2 });
+  assert.equal(itemProfitDetail({ ...item, pricing_snapshot: { unit_capital: 40000 }, unit_price_idr: 50000, quantity: 1 }).marginPercent, null);
+  assert.equal(itemProfitDetail({ ...item, pricing_snapshot: {} }), null);
 });
